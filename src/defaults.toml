@@ -110,6 +110,6 @@ min_rms = 120                   # quieter recordings count as silence (Whisper i
 language = ""                   # empty = auto-detect
 prompt = ""                     # spelling hints for Whisper (names, jargon)
 # shell pipeline that speaks the text it gets on stdin; empty = silent. Piper example:
-# tts = "piper --model ~/.local/share/piper/en_US-lessac-medium.onnx --output-raw | pw-play --rate 22050 --channels 1 --format s16 -"
+# tts = "piper --model ~/.local/share/piper/en_US-lessac-medium.onnx --output_raw 2>/dev/null | pw-play --raw --rate 22050 --channels 1 --format s16 -"
 tts = ""
 speak_output_chars = 300        # how much command output is read aloud when the planner asks for it
