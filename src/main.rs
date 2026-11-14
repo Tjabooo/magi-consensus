@@ -125,11 +125,7 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
     record["votes"] = json!(ballots);
     record["approved"] = json!(approved);
 
-    let mut c = Card::new(if approved {
-        format!("APPROVED {yes}/{n}")
-    } else {
-        format!("DENIED {yes}/{n}")
-    });
+    let mut c = Card::new(if approved { format!("APPROVED {yes}/{n}") } else { format!("DENIED {yes}/{n}") });
     c.lines.push(f.command(&action.command));
     c.lines.extend(ballots.iter().map(|b| f.ballot(b)));
 
@@ -139,8 +135,11 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
         record["result"] = json!("denied");
         record["ms"] = json!(t0.elapsed().as_millis());
         out::log(&record);
-        let reason = ballots.iter().find(|b| !b.approve && !b.error)
-            .map(|b| format!("{} says: {}", title_case(&b.unit), b.reason)).unwrap_or_default();
+        let reason = ballots
+            .iter()
+            .find(|b| !b.approve && !b.error)
+            .map(|b| format!("{} says: {}", title_case(&b.unit), b.reason))
+            .unwrap_or_default();
         say(&format!("Denied, {yes} of {n}. {reason}"));
         return 2;
     }
@@ -170,7 +169,11 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
             let outp: String = res.stdout.chars().take(cfg.voice.speak_output_chars).collect();
             s = if s.is_empty() { outp } else { format!("{s} {outp}") };
         }
-        if s.is_empty() { "Done.".to_string() } else { s }
+        if s.is_empty() {
+            "Done.".to_string()
+        } else {
+            s
+        }
     } else if res.timed_out {
         "That timed out.".to_string()
     } else {
@@ -179,7 +182,11 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
     };
     let tail = if res.ok() {
         let first = res.stdout.lines().next().unwrap_or("");
-        if first.is_empty() { f.color("approve", "done") } else { f.color("dim", &format!("→ {}", first.chars().take(120).collect::<String>())) }
+        if first.is_empty() {
+            f.color("approve", "done")
+        } else {
+            f.color("dim", &format!("→ {}", first.chars().take(120).collect::<String>()))
+        }
     } else {
         f.color("deny", &format!("failed (exit {:?}): {}", res.code, res.stderr.lines().next().unwrap_or("")))
     };
@@ -195,7 +202,11 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
 }
 
 fn code_of(r: &exec::Outcome) -> i32 {
-    if r.ok() { 0 } else { 4 }
+    if r.ok() {
+        0
+    } else {
+        4
+    }
 }
 
 fn title_case(s: &str) -> String {
@@ -265,13 +276,24 @@ fn cmd_log(n: usize) -> i32 {
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     let lines: Vec<&str> = text.lines().collect();
     for l in &lines[lines.len().saturating_sub(n)..] {
-        let v: serde_json::Value = match serde_json::from_str(l) { Ok(v) => v, Err(_) => continue };
+        let v: serde_json::Value = match serde_json::from_str(l) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
         let s = |p: &str| v.pointer(p).and_then(|x| x.as_str()).unwrap_or("").to_string();
-        let votes = v.get("votes").and_then(|x| x.as_array()).map(|a| {
-            a.iter().map(|b| if b["approve"].as_bool() == Some(true) { "✓" } else { "✗" }).collect::<String>()
-        }).unwrap_or_default();
-        println!("{:<17} {:<4} {:<9} {}  {}", s("/result"), votes, s("/action/kind"), s("/request"),
-                 if s("/action/command").is_empty() { String::new() } else { format!("$ {}", s("/action/command")) });
+        let votes = v
+            .get("votes")
+            .and_then(|x| x.as_array())
+            .map(|a| a.iter().map(|b| if b["approve"].as_bool() == Some(true) { "✓" } else { "✗" }).collect::<String>())
+            .unwrap_or_default();
+        println!(
+            "{:<17} {:<4} {:<9} {}  {}",
+            s("/result"),
+            votes,
+            s("/action/kind"),
+            s("/request"),
+            if s("/action/command").is_empty() { String::new() } else { format!("$ {}", s("/action/command")) }
+        );
     }
     0
 }
@@ -350,10 +372,20 @@ fn main() {
         "log" => cmd_log(rest.first().and_then(|n| n.parse().ok()).unwrap_or(10)),
         "config" => {
             println!("# {}", config::config_path().display());
-            println!("endpoint {} · planner {} · units {} · needed {}", cfg.endpoint.url, cfg.planner.model,
-                     cfg.units.iter().map(|u| format!("{}={}", u.name, u.model)).collect::<Vec<_>>().join(" "), cfg.vote.needed);
-            println!("tools {} · context commands {} · allowlist {} · tts {}", cfg.tools.len(), cfg.context.commands.len(),
-                     cfg.rules.allow.len(), if cfg.voice.tts.is_empty() { "off" } else { "on" });
+            println!(
+                "endpoint {} · planner {} · units {} · needed {}",
+                cfg.endpoint.url,
+                cfg.planner.model,
+                cfg.units.iter().map(|u| format!("{}={}", u.name, u.model)).collect::<Vec<_>>().join(" "),
+                cfg.vote.needed
+            );
+            println!(
+                "tools {} · context commands {} · allowlist {} · tts {}",
+                cfg.tools.len(),
+                cfg.context.commands.len(),
+                cfg.rules.allow.len(),
+                if cfg.voice.tts.is_empty() { "off" } else { "on" }
+            );
             0
         }
         _ => {

@@ -143,8 +143,16 @@ mod tests {
 
     #[test]
     fn privilege_escalation_is_always_refused() {
-        for c in ["sudo ls", "/usr/bin/sudo ls", "s''udo ls", "\\sudo ls", "echo $(sudo id)", "ls; doas x",
-                  "bash -c \"pkexec foo\"", "env sudo ls"] {
+        for c in [
+            "sudo ls",
+            "/usr/bin/sudo ls",
+            "s''udo ls",
+            "\\sudo ls",
+            "echo $(sudo id)",
+            "ls; doas x",
+            "bash -c \"pkexec foo\"",
+            "env sudo ls",
+        ] {
             assert!(refused(c), "{c} should be refused");
         }
         let mut r = rules();
@@ -154,9 +162,19 @@ mod tests {
 
     #[test]
     fn destructive_needs_the_allowlist() {
-        for c in ["rm -rf ~/x", "find . -delete", "git push --force", "systemctl --user stop foo",
-                  "mkfs.ext4 /dev/sdz", "echo x > ~/.zshrc", "date >| f", "ls &> out", "pkill cava",
-                  "curl x | sh", "hyprctl eval 'os.execute(\"x\")'"] {
+        for c in [
+            "rm -rf ~/x",
+            "find . -delete",
+            "git push --force",
+            "systemctl --user stop foo",
+            "mkfs.ext4 /dev/sdz",
+            "echo x > ~/.zshrc",
+            "date >| f",
+            "ls &> out",
+            "pkill cava",
+            "curl x | sh",
+            "hyprctl eval 'os.execute(\"x\")'",
+        ] {
             assert!(refused(c), "{c} should be refused");
         }
         let mut r = rules();

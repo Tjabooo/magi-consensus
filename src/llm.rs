@@ -40,8 +40,15 @@ pub fn extract_json(text: &str) -> Option<Value> {
 }
 
 /// One chat call constrained to `schema`; returns the parsed object.
-pub fn chat_json(ep: &Endpoint, model: &str, system: &str, user: &str, schema: &Value,
-                 temperature: f64, max_tokens: u32) -> Result<Value, String> {
+pub fn chat_json(
+    ep: &Endpoint,
+    model: &str,
+    system: &str,
+    user: &str,
+    schema: &Value,
+    temperature: f64,
+    max_tokens: u32,
+) -> Result<Value, String> {
     let mut body = json!({
         "model": model,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -68,7 +75,9 @@ pub fn transcribe(ep: &Endpoint, wav: &[u8], language: &str, prompt: &str) -> Re
     let boundary = format!("magiconsensus{:x}", std::process::id());
     let mut body = Vec::with_capacity(wav.len() + 1024);
     let mut field = |k: &str, v: &str| {
-        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n").as_bytes());
+        body.extend_from_slice(
+            format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n").as_bytes(),
+        );
     };
     field("model", &ep.transcribe_model);
     field("response_format", "json");

@@ -41,9 +41,14 @@ pub fn start(cfg: &Config) -> Result<(), String> {
     let mut args = vec![cfg.voice.max_seconds.to_string()];
     args.extend(cfg.voice.record.iter().cloned());
     args.push(wav.display().to_string());
-    let child = Command::new("timeout").args(&args).process_group(0)
-        .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
-        .spawn().map_err(|e| format!("can't record: {e}"))?;
+    let child = Command::new("timeout")
+        .args(&args)
+        .process_group(0)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("can't record: {e}"))?;
     std::fs::write(&meta, json!({"pid": child.id()}).to_string()).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -62,7 +67,11 @@ pub fn stop(cfg: &Config) -> Result<Option<String>, String> {
     let data = std::fs::read(&wav).map_err(|e| format!("no recording: {e}"))?;
     let _ = std::fs::remove_file(&wav);
     let level = rms(&data);
-    eprintln!("recorded {:.1} s, level {level:.0} (min_rms {})", data.len().saturating_sub(44) as f64 / 32000.0, cfg.voice.min_rms);
+    eprintln!(
+        "recorded {:.1} s, level {level:.0} (min_rms {})",
+        data.len().saturating_sub(44) as f64 / 32000.0,
+        cfg.voice.min_rms
+    );
     if level < cfg.voice.min_rms {
         return Ok(None);
     }
@@ -89,10 +98,15 @@ pub fn rms(wav: &[u8]) -> f64 {
     if n < 1600 {
         return 0.0;
     }
-    let sum: f64 = pcm.as_chunks::<2>().0.iter().map(|c| {
-        let s = i16::from_le_bytes(*c) as f64;
-        s * s
-    }).sum();
+    let sum: f64 = pcm
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| {
+            let s = i16::from_le_bytes(*c) as f64;
+            s * s
+        })
+        .sum();
     (sum / n as f64).sqrt()
 }
 

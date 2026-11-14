@@ -54,14 +54,25 @@ fn reader(mut r: impl Read + Send + 'static, cap: usize) -> Arc<Mutex<Vec<u8>>> 
 pub fn run(run: &Run, command: &str, timeout: Duration) -> Outcome {
     let t = Instant::now();
     let mut cmd = Command::new(&run.shell[0]);
-    cmd.args(&run.shell[1..]).arg(command)
+    cmd.args(&run.shell[1..])
+        .arg(command)
         .current_dir(config::expand(&run.cwd))
         .env("PATH", path_env(run))
-        .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .process_group(0);
     let mut child = match cmd.spawn() {
         Ok(c) => c,
-        Err(e) => return Outcome { code: Some(127), stdout: String::new(), stderr: format!("can't start {}: {e}", run.shell[0]), ms: 0, timed_out: false },
+        Err(e) => {
+            return Outcome {
+                code: Some(127),
+                stdout: String::new(),
+                stderr: format!("can't start {}: {e}", run.shell[0]),
+                ms: 0,
+                timed_out: false,
+            }
+        }
     };
     let out = reader(child.stdout.take().unwrap(), run.max_output);
     let err = reader(child.stderr.take().unwrap(), run.max_output);
@@ -72,8 +83,10 @@ pub fn run(run: &Run, command: &str, timeout: Duration) -> Outcome {
             Ok(Some(st)) => break st.code(),
             Ok(None) if Instant::now() >= deadline => {
                 timed_out = true;
-                let _ = Command::new("kill").args(["-KILL", "--", &format!("-{}", child.id())])
-                    .stderr(Stdio::null()).status();
+                let _ = Command::new("kill")
+                    .args(["-KILL", "--", &format!("-{}", child.id())])
+                    .stderr(Stdio::null())
+                    .status();
                 let _ = child.kill();
                 let _ = child.wait();
                 break None;

@@ -100,8 +100,15 @@ pub fn planner_prompt(cfg: &Config, context: &str) -> String {
 
 pub fn plan(cfg: &Config, request: &str, context: &str) -> Result<Action, String> {
     let p = &cfg.planner;
-    let v = llm::chat_json(&cfg.endpoint, &p.model, &planner_prompt(cfg, context),
-                           &format!("Request: {request}"), &planner_schema(), p.temperature, p.max_tokens)?;
+    let v = llm::chat_json(
+        &cfg.endpoint,
+        &p.model,
+        &planner_prompt(cfg, context),
+        &format!("Request: {request}"),
+        &planner_schema(),
+        p.temperature,
+        p.max_tokens,
+    )?;
     let get = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").trim().to_string();
     let mut a = Action {
         kind: get("kind"),
@@ -131,7 +138,8 @@ fn vote_one(cfg: &Config, unit: &Unit, request: &str, action: &Action, context: 
          sentence, at most 15 words), then verdict APPROVE or DENY.",
         unit.persona.trim()
     );
-    let mut user = format!("Request: {request}\nProposed command: {}\nPlanner's reasoning: {}\n", action.command, action.why);
+    let mut user =
+        format!("Request: {request}\nProposed command: {}\nPlanner's reasoning: {}\n", action.command, action.why);
     if !context.is_empty() {
         user.push_str(&format!("\nContext:\n{context}\n"));
     }
@@ -140,19 +148,42 @@ fn vote_one(cfg: &Config, unit: &Unit, request: &str, action: &Action, context: 
         Ok(v) => {
             let verdict = v.get("verdict").and_then(Value::as_str).unwrap_or("").trim().to_uppercase();
             let reason = v.get("reason").and_then(Value::as_str).unwrap_or("").trim().to_string();
-            Ballot { unit: unit.name.clone(), approve: verdict == "APPROVE", reason, ms: t.elapsed().as_millis(), error: false }
+            Ballot {
+                unit: unit.name.clone(),
+                approve: verdict == "APPROVE",
+                reason,
+                ms: t.elapsed().as_millis(),
+                error: false,
+            }
         }
-        Err(e) => Ballot { unit: unit.name.clone(), approve: false, reason: format!("no answer: {e}"), ms: t.elapsed().as_millis(), error: true },
+        Err(e) => Ballot {
+            unit: unit.name.clone(),
+            approve: false,
+            reason: format!("no answer: {e}"),
+            ms: t.elapsed().as_millis(),
+            error: true,
+        },
     }
 }
 
 /// All units vote in parallel; a failed unit counts as DENY.
 pub fn vote(cfg: &Config, request: &str, action: &Action, context: &str) -> Vec<Ballot> {
     std::thread::scope(|s| {
-        let handles: Vec<_> = cfg.units.iter().map(|u| s.spawn(move || vote_one(cfg, u, request, action, context))).collect();
-        handles.into_iter().zip(&cfg.units).map(|(h, u)| {
-            h.join().unwrap_or_else(|_| Ballot { unit: u.name.clone(), approve: false, reason: "crashed".into(), ms: 0, error: true })
-        }).collect()
+        let handles: Vec<_> =
+            cfg.units.iter().map(|u| s.spawn(move || vote_one(cfg, u, request, action, context))).collect();
+        handles
+            .into_iter()
+            .zip(&cfg.units)
+            .map(|(h, u)| {
+                h.join().unwrap_or_else(|_| Ballot {
+                    unit: u.name.clone(),
+                    approve: false,
+                    reason: "crashed".into(),
+                    ms: 0,
+                    error: true,
+                })
+            })
+            .collect()
     })
 }
 

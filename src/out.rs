@@ -52,7 +52,11 @@ impl Fmt<'_> {
         }
     }
     pub fn plain(&self, text: &str) -> String {
-        if self.0.markup { esc(text) } else { text.to_string() }
+        if self.0.markup {
+            esc(text)
+        } else {
+            text.to_string()
+        }
     }
     pub fn command(&self, cmd: &str) -> String {
         self.color("accent", &format!("$ {}", short(cmd, 140)))
@@ -61,7 +65,12 @@ impl Fmt<'_> {
         let (key, word) = if b.approve { ("approve", "APPROVE") } else { ("deny", "DENY   ") };
         let name = format!("{:<9}", b.unit);
         if self.0.markup {
-            format!("<tt>{} {}</tt> {}", self.bold(key, &name), self.bold(key, word), self.color("dim", &short(&b.reason, 90)))
+            format!(
+                "<tt>{} {}</tt> {}",
+                self.bold(key, &name),
+                self.bold(key, word),
+                self.color("dim", &short(&b.reason, 90))
+            )
         } else {
             format!("{name} {word} {}", short(&b.reason, 90))
         }
@@ -75,11 +84,23 @@ pub fn card(cfg: &Config, c: &Card) {
         return;
     }
     let _ = Command::new(&n.command)
-        .args(["-a", &n.app_name, "-h", &format!("string:x-dunst-stack-tag:{TAG}"),
-               "-h", &format!("string:x-canonical-private-synchronous:{TAG}"),
-               "-u", if c.critical { "critical" } else { "normal" },
-               "-t", &n.timeout_ms.to_string(), &c.title, &c.lines.join("\n")])
-        .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
+        .args([
+            "-a",
+            &n.app_name,
+            "-h",
+            &format!("string:x-dunst-stack-tag:{TAG}"),
+            "-h",
+            &format!("string:x-canonical-private-synchronous:{TAG}"),
+            "-u",
+            if c.critical { "critical" } else { "normal" },
+            "-t",
+            &n.timeout_ms.to_string(),
+            &c.title,
+            &c.lines.join("\n"),
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status();
 }
 
@@ -89,8 +110,12 @@ pub fn speak(cfg: &Config, text: &str) {
     if cfg.voice.tts.trim().is_empty() || text.is_empty() {
         return;
     }
-    let child = Command::new("sh").args(["-c", &cfg.voice.tts])
-        .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped()).spawn();
+    let child = Command::new("sh")
+        .args(["-c", &cfg.voice.tts])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn();
     match child {
         Ok(mut ch) => {
             if let Some(mut i) = ch.stdin.take() {
