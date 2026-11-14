@@ -1,0 +1,43 @@
+# MAGI Consensus config: ~/.config/magi-consensus/config.toml
+# Only what you set here overrides the built-in defaults (src/defaults.toml lists every key).
+
+[endpoint]
+url = "http://127.0.0.1:8080"          # any OpenAI-compatible server: llama-server, Ollama (:11434), ...
+transcribe_model = "whisper-1"          # whatever your /v1/audio/transcriptions server calls its model
+# Ollama / non-Qwen models: drop the thinking switch
+# extra = {}
+
+[planner]
+model = "default"                       # llama-server ignores the name; Ollama needs a real one, e.g. "qwen3:8b"
+
+# Units keep their default personas; give them other models by redefining all three [[units]]
+# (arrays replace the defaults), see src/defaults.toml.
+
+[context]
+commands = ["date '+%A %H:%M'"]
+# Hyprland: what's focused changes what "mute it" means
+# commands = ["date '+%A %H:%M'", "hyprctl activewindow -j | jq -c '{class, title}'"]
+
+[[tools]]
+name = "volume"
+usage = "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"
+about = "lower by 5% (sign after the number: 5%- / 5%+); exact level: 30%; mute: wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
+
+[[tools]]
+name = "media"
+usage = "playerctl play-pause"
+about = "also next, previous; `playerctl metadata --format '{{artist}} - {{title}}'` = what's playing"
+
+[[tools]]
+name = "reminder"
+usage = "systemd-run --user --on-active=10m notify-send 'Reminder' 'Tea'"
+about = "run something later"
+
+[rules]
+# destructive commands you DO want possible (still voted on); anchor them
+# allow = ['^pkill -x (cava|steam)$']
+
+[voice]
+prompt = ""                             # names/jargon Whisper should spell right
+# Piper → PipeWire; empty = silent
+# tts = "piper --model ~/.local/share/piper/en_GB-alan-medium.onnx --output_raw 2>/dev/null | pw-play --rate 22050 --channels 1 --format s16 -"

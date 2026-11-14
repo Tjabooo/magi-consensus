@@ -1,0 +1,115 @@
+# Built-in defaults. ~/.config/magi-consensus/config.toml overrides any key; tables merge key by key,
+# arrays ([[units]], [[tools]], lists) replace the default wholesale.
+
+# What the planner may use besides ordinary Linux commands (set as [[tools]] tables in your config):
+# [[tools]]
+# name = "volume"
+# usage = "wpctl set-volume @DEFAULT_AUDIO_SINK@ 30%"
+# about = "set the output volume (also +5%/-5%, wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle)"
+tools = []
+
+[endpoint]
+url = "http://127.0.0.1:8080"   # OpenAI-compatible server (llama-server, npukit, Ollama...), without /v1
+api_key = ""                    # sent as a Bearer token when set
+timeout = 120                   # seconds per request (a cold model load counts)
+transcribe_model = "whisper-1"  # "model" field of /v1/audio/transcriptions
+# merged into every chat request body; this turns Qwen3-style thinking off (fast, short answers)
+extra = { chat_template_kwargs = { enable_thinking = false } }
+
+[planner]
+model = "default"
+temperature = 0.2
+max_tokens = 400
+
+[vote]
+needed = 2                      # approvals required (of the units below)
+
+# The three units. Each sees the request, the proposed command and the context, and votes alone.
+[[units]]
+name = "MELCHIOR"
+model = "default"
+temperature = 0.2
+persona = """You are MELCHIOR, the practical, technical facet of a three-part review board. Judge only whether \
+the command is correct: will it actually do what was asked on a Linux desktop, with the right tool, the \
+right flags and no obvious mistake? Approve correct commands even if they are mundane. Deny commands that \
+are wrong, would fail, or do something different from the request."""
+
+[[units]]
+name = "BALTHASAR"
+model = "default"
+temperature = 0.2
+persona = """You are BALTHASAR, the protective facet of a three-part review board. Judge only the risk: could \
+the command lose or leak data, break the system or a running program, cost money, contact someone, or be \
+hard to undo? Ordinary reversible actions (volume, media keys, opening apps, notifications, reading status) \
+are fine: approve them. Deny anything whose damage would outweigh what the person asked for."""
+
+[[units]]
+name = "CASPER"
+model = "default"
+temperature = 0.3
+persona = """You are CASPER, the intuitive facet of a three-part review board. Judge only intent: is this what \
+the person actually meant, given how people talk and what is on their screen right now? Speech-to-text \
+mistakes, vague words and jokes count. Approve when the command matches the most likely meaning. Deny when \
+it takes the words too literally, goes further than asked, or guesses at something important."""
+
+[run]
+shell = ["sh", "-c"]
+timeout = 20                    # seconds, then the command's process group is killed
+max_output = 4000               # bytes of stdout/stderr kept
+cwd = "~"
+path_prepend = ["~/.local/bin"] # hotkey daemons often start without these on PATH
+
+# Hard rules: checked before any vote; a hit is refused outright. Words are matched after quotes and
+# backslashes are stripped and the command is split on whitespace and shell punctuation; a path counts
+# as its last component (/usr/bin/sudo = sudo).
+[rules]
+# never runs, not even when allowlisted
+never = ["sudo", "doas", "su", "pkexec", "run0", "passwd", "chpasswd", "visudo"]
+# destructive: refused unless the whole command matches an `allow` regex
+destructive = ["rm", "rmdir", "unlink", "shred", "dd", "mkfs", "wipefs", "fdisk", "sfdisk", "gdisk", "parted",
+  "truncate", "mv", "cp", "kill", "pkill", "killall", "reboot", "shutdown", "poweroff", "halt",
+  "chmod", "chown", "chattr", "crontab", "pacman", "yay", "paru", "dnf", "apt", "apt-get"]
+# word prefixes that count as destructive (mkfs.ext4, ...)
+destructive_prefixes = ["mkfs."]
+# regexes on the normalised command that count as destructive
+destructive_patterns = [
+  '\bsystemctl\b.*\b(stop|disable|mask|kill|isolate|poweroff|reboot|halt|reset-failed)\b',
+  '\bloginctl\b.*\b(terminate|kill|poweroff|reboot)',
+  '\bgit\b.*\b(push\b.*(-f\b|--force)|reset\b.*--hard|clean\b|branch\b.*-D\b)',
+  '\bfind\b.*\s-(delete|exec)\b',
+  '\brsync\b.*--delete',
+  '\bflatpak\b.*\b(uninstall|remove)\b',
+]
+# interpreters and tricks that hide what really runs: treated as destructive
+opaque = ["sh", "bash", "zsh", "dash", "fish", "ksh", "eval", "exec", "source", "python", "python3", "perl",
+  "ruby", "node", "lua", "xargs", "base64"]
+opaque_patterns = ['os\.execute', 'io\.popen']
+# overwriting a file with `>` (except /dev/null) counts as destructive
+redirect_is_destructive = true
+# full-command regexes that may pass the destructive/opaque rules (they are still voted on)
+allow = []
+
+[context]
+# run before planning; trimmed output is shown to the planner and all units
+commands = []
+max_chars = 1500
+
+
+[notify]
+enabled = true
+command = "notify-send"
+app_name = "MAGI"
+markup = true                   # pango markup in the card (dunst: markup = full)
+timeout_ms = 9000
+colors = { approve = "#f5a524", deny = "#e5484d", dim = "#7a675a", accent = "#ff8c1a" }
+
+[voice]
+record = ["pw-record", "--rate", "16000", "--channels", "1", "--format", "s16"]
+max_seconds = 30
+min_rms = 120                   # quieter recordings count as silence (Whisper invents text from silence)
+language = ""                   # empty = auto-detect
+prompt = ""                     # spelling hints for Whisper (names, jargon)
+# shell pipeline that speaks the text it gets on stdin; empty = silent. Piper example:
+# tts = "piper --model ~/.local/share/piper/en_US-lessac-medium.onnx --output-raw | pw-play --rate 22050 --channels 1 --format s16 -"
+tts = ""
+speak_output_chars = 300        # how much command output is read aloud when the planner asks for it
