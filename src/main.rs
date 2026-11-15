@@ -400,13 +400,16 @@ fn title_case(s: &str) -> String {
     c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
 }
 
-fn cmd_ptt(cfg: &Config, what: &str, o: &mut Opts) -> i32 {
+fn cmd_ptt(cfg: &Config, what: &str, o_pid: Option<&str>, o: &mut Opts) -> i32 {
     let f = Fmt(&cfg.notify);
     let stop = |o: &Opts| -> i32 {
-        let mut c = Card::new("listening…");
-        c.lines.push(f.color("dim", "transcribing"));
+        let Some(pid) = ptt::claim() else {
+            return 0; // already stopped (release after a toggle-stop, or the watcher got it first)
+        };
+        let mut c = Card::new("transcribing…");
+        c.lines.push(f.color("dim", "heard you, writing it down"));
         out::card(cfg, &c);
-        match ptt::stop(cfg) {
+        match ptt::finish(cfg, pid) {
             Ok(Some(text)) => handle(cfg, &text, o),
             Ok(None) => {
                 let mut c = Card::new("heard nothing");
@@ -439,12 +442,13 @@ fn cmd_ptt(cfg: &Config, what: &str, o: &mut Opts) -> i32 {
                 1
             }
         },
-        "stop" => {
-            if ptt::recording().is_none() {
-                return 0; // release after a toggle-stop: nothing to do
-            }
-            stop(o)
-        }
+        "stop" => stop(o),
+        // started by `ptt start`: catches a lost key release and recordings that hit max_seconds
+        "watch" => match o_pid.and_then(|p| p.parse::<u32>().ok()) {
+            Some(pid) if ptt::watch(cfg, pid) => stop(o),
+            Some(_) => 0,
+            None => 64,
+        },
         "cancel" => {
             ptt::cancel();
             0
@@ -526,7 +530,7 @@ fn main() {
         }
         "ears" => cmd_ears(&cfg, rest.first().map(String::as_str).unwrap_or("status"), rest.get(1..).unwrap_or(&[])),
         "commands" => cmd_commands(&cfg),
-        "ptt" => cmd_ptt(&cfg, rest.first().map(String::as_str).unwrap_or("toggle"), &mut o),
+        "ptt" => cmd_ptt(&cfg, rest.first().map(String::as_str).unwrap_or("toggle"), rest.get(1).map(String::as_str), &mut o),
         "check" => match rules::check(&cfg.rules, &rest.join(" ")) {
             Ok(rules::Verdict::Pass) => {
                 println!("pass (would go to the vote)");

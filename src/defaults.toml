@@ -109,6 +109,7 @@ colors = { approve = "#f5a524", deny = "#e5484d", dim = "#7a675a", accent = "#ff
 [voice]
 record = ["pw-record", "--rate", "16000", "--channels", "1", "--format", "s16"]
 max_seconds = 30
+hold_key = "X"                  # the push-to-talk key (no modifiers): a watcher stops the recording when it goes up, if the compositor's release bind didn't
 min_rms = 120                   # quieter recordings count as silence (Whisper invents text from silence)
 language = ""                   # empty = auto-detect
 prompt = ""                     # spelling hints for Whisper (names, jargon)

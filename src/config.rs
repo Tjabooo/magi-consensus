@@ -176,6 +176,7 @@ pub struct Notify {
 pub struct Voice {
     pub record: Vec<String>,
     pub max_seconds: u64,
+    pub hold_key: String,
     pub min_rms: f64,
     pub language: String,
     pub prompt: String,

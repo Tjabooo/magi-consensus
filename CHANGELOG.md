@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 (2026-11-16)
+
+- Push to talk no longer gets stuck on "listening…": a watcher reads the hold key from the keyboard
+  (evdev) and stops the recording when Hyprland drops the release bind (modifier released before X).
+  Recordings that hit `max_seconds` are now transcribed instead of silently dropped. New `[voice] hold_key`.
+- The card says "transcribing…" while Whisper works (it said "listening…").
+
 ## 0.2.0 (2026-11-15)
 
 - Fast path: your own `[[commands]]` phrases run at once with no model or vote; requests chain with

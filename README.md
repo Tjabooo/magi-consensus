@@ -131,6 +131,9 @@ hl.bind("SUPER + ALT + X", hl.dsp.exec_cmd(HOME .. "/.local/bin/consensus ptt st
 
 Classic `hyprland.conf`: `bind = SUPER ALT, X, exec, consensus ptt start` and
 `bindr = SUPER ALT, X, exec, consensus ptt stop`. Other compositors: bind `consensus ptt toggle`.
+If a release gets lost (Hyprland skips it when SUPER or ALT comes up before X), a watcher reads the
+key from the keyboard and stops the recording anyway: set `[voice] hold_key` if your key isn't X
+(needs read access to `/dev/input`, i.e. the `input` group).
 
 Exit codes: 0 ran / answered, 2 denied by vote, 3 refused by rule, 4 command failed, 1 model error.
 

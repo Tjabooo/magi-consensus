@@ -96,9 +96,16 @@ output goes to the planner and voters ("the focused window is CS2" changes what 
 
 `consensus ptt start` spawns the recorder and returns; `consensus ptt stop` stops it (SIGINT so the
 WAV header is written), transcribes and runs the pipeline. Bind start on key press and stop on key
-release. `start` while already recording acts as `stop`, so a lost release event just means "press
-again". A hard `max_seconds` cap kills a forgotten recording. Quiet recordings (RMS below
-`min_rms`) are dropped: Whisper invents text from silence.
+release. `start` while already recording acts as `stop`.
+
+Release binds are not reliable: Hyprland skips a `SUPER + ALT + X` release bind when a modifier comes
+up before X, which left the recording running and the card on "listening…". So `start` also spawns a
+watcher (`ptt watch PID`) that reads `voice.hold_key` from every keyboard through evdev (EVIOCGKEY,
+read-only, needs the `input` group). If the key was held at start and has been up for 250 ms with no
+stop, the watcher stops the recording itself; it also finishes a recording that hit the
+`max_seconds` cap instead of dropping it. The bind and the watcher race for the recording by renaming
+`ptt.json`, so only one of them transcribes it. Watcher notes go to `~/.local/state/magi-consensus/ptt.log`.
+Quiet recordings (RMS below `min_rms`) are dropped: Whisper invents text from silence.
 
 ## Not in v0.1
 
