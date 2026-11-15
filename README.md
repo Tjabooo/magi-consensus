@@ -12,6 +12,10 @@ outvoted it. Dry run, so nothing ran.*
 
 ## Features
 
+- **A general voice assistant.** Talk to it like a person: questions, small talk and statements get a
+  spoken answer; only clear requests to *do* something become commands. It answers in the language you
+  spoke (one TTS voice per language), remembers the last few exchanges for follow-ups ("what did I just
+  say my favourite food was?"), and asks you to repeat garbled speech instead of guessing a command.
 - **Two-of-three rule.** A planner model turns your request into one shell command; MELCHIOR (is it
   correct?), BALTHASAR (is it safe?) and CASPER (is it what you meant?) vote independently. A unit
   that errors counts as DENY.
@@ -146,13 +150,13 @@ defaults; [`src/defaults.toml`](src/defaults.toml) documents every key, and
 | Section | What |
 |---|---|
 | `[endpoint]` | server URL, API key, timeout, Whisper model name, `extra` fields merged into every chat request |
-| `[planner]` | model, temperature |
+| `[planner]` | model, temperature, reply style, conversation memory (`memory_turns`, `memory_minutes`) |
 | `[[units]]` | name, model, temperature, persona prompt (any count; `vote.needed` sets the bar) |
 | `[[tools]]` | what the planner may use: name, example command, one-line description |
 | `[context]` | commands whose output the planner and units see (time, focused window...) |
 | `[rules]` | `never`, `destructive`, `opaque` word lists, regex patterns, `allow` |
 | `[run]` | shell, timeout, cwd, extra PATH entries |
-| `[voice]` | recorder, max length, silence threshold, Whisper language/prompt, TTS pipeline |
+| `[voice]` | recorder, max length, hold key, silence threshold, Whisper language/prompt, `language_remap` (re-transcribe misdetected languages, e.g. `da = "sv"`), TTS pipeline + `tts_voices` per reply language |
 | `[fast]` | wake words and fillers stripped from requests, fullscreen command, done sound |
 | `[[apps]]` | name, aliases, class / title regex, process, launch command |
 | `[[commands]]` | phrases (`say`), `run`, spoken `reply`, `speak_output` |

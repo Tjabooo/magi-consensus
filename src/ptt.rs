@@ -138,7 +138,7 @@ fn stamp() -> String {
 }
 
 /// Stop a claimed recording; Ok(None) = nothing usable was said.
-pub fn finish(cfg: &Config, pid: u32) -> Result<Option<String>, String> {
+pub fn finish(cfg: &Config, pid: u32) -> Result<Option<llm::Heard>, String> {
     let (_, wav) = paths();
     let _ = std::fs::remove_file(claimed_path());
     // SIGINT to the group: timeout + pw-record finish the WAV header
@@ -160,9 +160,10 @@ pub fn finish(cfg: &Config, pid: u32) -> Result<Option<String>, String> {
     if level < cfg.voice.min_rms {
         return Ok(None);
     }
-    let text = llm::transcribe(&cfg.endpoint, &data, &cfg.voice.language, &cfg.voice.prompt)?;
-    let cleaned = text.trim().trim_matches(|c: char| c == '.' || c.is_whitespace()).to_string();
-    Ok((!cleaned.is_empty()).then_some(text.trim().to_string()))
+    let heard =
+        llm::transcribe(&cfg.endpoint, &data, &cfg.voice.language, &cfg.voice.prompt, &cfg.voice.language_remap)?;
+    let cleaned = heard.text.trim().trim_matches(|c: char| c == '.' || c.is_whitespace()).to_string();
+    Ok((!cleaned.is_empty()).then_some(heard))
 }
 
 pub fn cancel() -> bool {

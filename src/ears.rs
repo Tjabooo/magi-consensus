@@ -334,7 +334,7 @@ enum State {
 }
 
 /// The daemon. `handle` gets each transcript (wake word already removed).
-pub fn run(cfg: &Config, handle: impl Fn(&str) + Send + Sync + 'static) -> Result<(), String> {
+pub fn run(cfg: &Config, handle: impl Fn(&str, &str) + Send + Sync + 'static) -> Result<(), String> {
     let k = spotter(cfg)?;
     let mut stream = k.create_stream();
     if cfg.ears.record.is_empty() {
@@ -516,9 +516,15 @@ pub fn run(cfg: &Config, handle: impl Fn(&str) + Send + Sync + 'static) -> Resul
     }
 }
 
-fn understand(cfg: &Config, pcm: &[i16], handle: &dyn Fn(&str)) {
+fn understand(cfg: &Config, pcm: &[i16], handle: &dyn Fn(&str, &str)) {
     let t0 = Instant::now();
-    let text = match llm::transcribe(&cfg.endpoint, &wav(pcm), &cfg.voice.language, &cfg.voice.prompt) {
+    let heard = match llm::transcribe(
+        &cfg.endpoint,
+        &wav(pcm),
+        &cfg.voice.language,
+        &cfg.voice.prompt,
+        &cfg.voice.language_remap,
+    ) {
         Ok(t) => t,
         Err(e) => {
             eprintln!("ears: speech failed: {e}");
@@ -526,7 +532,8 @@ fn understand(cfg: &Config, pcm: &[i16], handle: &dyn Fn(&str)) {
             return;
         }
     };
-    eprintln!("ears: heard {:?} ({} ms)", text.trim(), t0.elapsed().as_millis());
+    let text = heard.text;
+    eprintln!("ears: heard {:?} [{}] ({} ms)", text.trim(), heard.lang, t0.elapsed().as_millis());
     let request = if cfg.ears.require_wake_word {
         match after_wake(cfg, &text) {
             Some(r) => r,
@@ -543,7 +550,7 @@ fn understand(cfg: &Config, pcm: &[i16], handle: &dyn Fn(&str)) {
         out::close_card(cfg);
         return;
     }
-    handle(&request);
+    handle(&request, &heard.lang);
 }
 
 #[cfg(test)]

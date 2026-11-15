@@ -21,6 +21,8 @@ model = "default"
 temperature = 0.2
 max_tokens = 400
 style = ""                      # tone/personality for replies, appended to the planner prompt
+memory_turns = 8                # recent exchanges the planner sees, so follow-ups work (0 = none)
+memory_minutes = 15             # older exchanges are forgotten
 
 [vote]
 needed = 2                      # approvals required (of the units below)
@@ -112,10 +114,14 @@ max_seconds = 30
 hold_key = "X"                  # the push-to-talk key (no modifiers): a watcher stops the recording when it goes up, if the compositor's release bind didn't
 min_rms = 120                   # quieter recordings count as silence (Whisper invents text from silence)
 language = ""                   # empty = auto-detect
+# auto-detect mistakes: a detected language listed here is transcribed again as the value
+language_remap = {}             # e.g. { da = "sv", no = "sv", nn = "sv" } for a Swede
 prompt = ""                     # spelling hints for Whisper (names, jargon)
 # shell pipeline that speaks the text it gets on stdin; empty = silent. Piper example:
 # tts = "piper --model ~/.local/share/piper/en_US-lessac-medium.onnx --output_raw 2>/dev/null | pw-play --raw --rate 22050 --channels 1 --format s16 -"
 tts = ""
+# a voice per reply language (the planner answers in the language you spoke); others use tts
+tts_voices = {}                 # e.g. { sv = "piper --model ~/.local/share/piper/sv_SE-alma-medium.onnx --output_raw ..." }
 speak_output_chars = 300        # how much command output is read aloud when the planner asks for it
 
 # ── Fast path ────────────────────────────────────────────────────────────────

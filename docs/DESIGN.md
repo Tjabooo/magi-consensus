@@ -131,3 +131,15 @@ int8, one CPU thread) with your keywords tokenised from the model's `bpe.model`.
 sent to Whisper. Whisper has to hear a wake word in its first words too; a keyword-spotter false alarm
 ("magic") then costs one transcription and nothing runs. While a request is handled, the spotter is
 paused, so the spoken answer can't wake it.
+
+### Conversation, languages, memory (0.3.0)
+
+The planner is a general assistant first: its JSON starts with `action_words` (the words that ask for
+an action on the computer), then `kind`. Key order matters: llama.cpp generates in the schema's order,
+and serde_json keeps it only with `preserve_order` (before 0.3.0 the keys were sorted, so `command` came
+before `kind`). A `shell` plan with empty `action_words` is planned once more with a note that it is
+conversation. Whisper runs with `verbose_json`; the most likely language code goes to the planner
+("spoken in Swedish; reply in Swedish" when a voice exists), and `[voice] language_remap` transcribes a
+misdetected language again as another. `reply_language` is checked against the text (CJK or not,
+Swedish letters/words) before it picks a `tts_voices` entry. Recent exchanges live in
+`conversation.jsonl` (state dir, last 50 lines) and go into the planner's user message.

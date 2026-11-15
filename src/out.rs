@@ -116,16 +116,18 @@ pub fn card_for(cfg: &Config, c: &Card, timeout_ms: i64) {
 
 /// Speak `text` through `voice.tts` (blocks until it has been said).
 pub fn speak(cfg: &Config, text: &str) {
+    speak_in(cfg, text, "");
+}
+
+/// Speak in a language's own voice (`voice.tts_voices`), else the default `voice.tts`.
+pub fn speak_in(cfg: &Config, text: &str, lang: &str) {
     let text = text.trim();
-    if cfg.voice.tts.trim().is_empty() || text.is_empty() {
+    let tts = cfg.voice.tts_voices.get(lang).filter(|t| !t.trim().is_empty()).unwrap_or(&cfg.voice.tts);
+    if tts.trim().is_empty() || text.is_empty() {
         return;
     }
-    let child = Command::new("sh")
-        .args(["-c", &cfg.voice.tts])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn();
+    let child =
+        Command::new("sh").args(["-c", tts]).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped()).spawn();
     match child {
         Ok(mut ch) => {
             if let Some(mut i) = ch.stdin.take() {

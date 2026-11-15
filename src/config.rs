@@ -113,6 +113,10 @@ pub struct Planner {
     /// Extra instructions on tone and personality, appended to the planner prompt.
     #[serde(default)]
     pub style: String,
+    /// how many recent exchanges the planner sees (0 = no memory)
+    pub memory_turns: usize,
+    /// exchanges older than this are forgotten
+    pub memory_minutes: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -183,6 +187,12 @@ pub struct Voice {
     pub hold_key: String,
     pub min_rms: f64,
     pub language: String,
+    /// detected language → language to transcribe again in (e.g. da = "sv")
+    #[serde(default)]
+    pub language_remap: BTreeMap<String, String>,
+    /// language code → TTS pipeline for replies in that language; others use `tts`
+    #[serde(default)]
+    pub tts_voices: BTreeMap<String, String>,
     pub prompt: String,
     pub tts: String,
     pub speak_output_chars: usize,

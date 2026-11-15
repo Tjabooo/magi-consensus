@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 (2026-11-16)
+
+- General voice assistant: questions, small talk, statements and garbled speech get spoken answers;
+  only words that ask for an action become a command. The planner first writes those `action_words`;
+  a command with none is planned again as conversation.
+- Fix: the planner's JSON keys were generated in alphabetical order (serde_json sorted the schema), so
+  the model wrote `command` before deciding `kind`. Schema order is kept now (`preserve_order`).
+- Replies in the language you spoke: Whisper's detected language goes to the planner, `reply_language`
+  picks a voice from `[voice] tts_voices` (checked against the reply text).
+- `[voice] language_remap`: a misdetected language is transcribed again as another (`da = "sv"`).
+- Conversation memory: the last `planner.memory_turns` exchanges within `memory_minutes`;
+  `consensus forget` clears it. `consensus hear` prints the language; `ask --lang CODE` for testing.
+- Answers are spoken, never typed or sent into a window unless you asked to type or send.
+
 ## Unreleased
 
 - Wake-word requests that aren't your own phrases run the planner's command after the hard rules

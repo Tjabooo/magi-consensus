@@ -2,6 +2,7 @@
 
 use crate::config::Endpoint;
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 fn agent(timeout: u64) -> ureq::Agent {
@@ -71,7 +72,64 @@ pub fn chat_json(
     })
 }
 
-pub fn transcribe(ep: &Endpoint, wav: &[u8], language: &str, prompt: &str) -> Result<String, String> {
+/// What Whisper heard: the text and the language it was in (ISO code, "" if the server doesn't say).
+#[derive(Debug, Clone, Default)]
+pub struct Heard {
+    pub text: String,
+    pub lang: String,
+}
+
+/// Transcribe a WAV. `language` empty = auto-detect; a detected language that is a key of `remap`
+/// is transcribed again as the value (Swedish heard as Danish/Norwegian → "sv").
+pub fn transcribe(
+    ep: &Endpoint,
+    wav: &[u8],
+    language: &str,
+    prompt: &str,
+    remap: &BTreeMap<String, String>,
+) -> Result<Heard, String> {
+    let v = transcribe_once(ep, wav, language, prompt)?;
+    let mut heard = heard_from(&v, language);
+    if language.is_empty() {
+        if let Some(to) = remap.get(&heard.lang).filter(|to| !to.is_empty() && **to != heard.lang) {
+            eprintln!("heard {:?} as {}, transcribing again as {to}", heard.text, heard.lang);
+            let v = transcribe_once(ep, wav, to, prompt)?;
+            heard = heard_from(&v, to);
+        }
+    }
+    Ok(heard)
+}
+
+fn heard_from(v: &Value, language: &str) -> Heard {
+    let text = v.get("text").and_then(Value::as_str).unwrap_or("").trim().to_string();
+    let lang = if !language.is_empty() { language.to_string() } else { detected(v) };
+    Heard { text, lang }
+}
+
+/// The most likely language code of a verbose_json reply (whisper.cpp: language_probabilities).
+fn detected(v: &Value) -> String {
+    if let Some(p) = v.get("language_probabilities").and_then(Value::as_object) {
+        if let Some((k, _)) =
+            p.iter().filter_map(|(k, x)| x.as_f64().map(|x| (k, x))).max_by(|a, b| a.1.total_cmp(&b.1))
+        {
+            return k.clone();
+        }
+    }
+    // OpenAI-style servers give only a language name
+    match v.get("language").and_then(Value::as_str).unwrap_or("").to_lowercase().as_str() {
+        "english" | "en" => "en",
+        "swedish" | "sv" => "sv",
+        "danish" | "da" => "da",
+        "norwegian" | "no" => "no",
+        "nynorsk" | "nn" => "nn",
+        "chinese" | "zh" => "zh",
+        "german" | "de" => "de",
+        _ => "",
+    }
+    .to_string()
+}
+
+fn transcribe_once(ep: &Endpoint, wav: &[u8], language: &str, prompt: &str) -> Result<Value, String> {
     let boundary = format!("magiconsensus{:x}", std::process::id());
     let mut body = Vec::with_capacity(wav.len() + 1024);
     let mut field = |k: &str, v: &str| {
@@ -80,7 +138,7 @@ pub fn transcribe(ep: &Endpoint, wav: &[u8], language: &str, prompt: &str) -> Re
         );
     };
     field("model", &ep.transcribe_model);
-    field("response_format", "json");
+    field("response_format", "verbose_json");
     if !language.is_empty() {
         field("language", language);
     }
@@ -96,8 +154,7 @@ pub fn transcribe(ep: &Endpoint, wav: &[u8], language: &str, prompt: &str) -> Re
     if !ep.api_key.is_empty() {
         req = req.header("Authorization", &format!("Bearer {}", ep.api_key));
     }
-    let v = finish(req.send(&body[..]), "transcribe")?;
-    Ok(v.get("text").and_then(Value::as_str).unwrap_or("").trim().to_string())
+    finish(req.send(&body[..]), "transcribe")
 }
 
 #[cfg(test)]
@@ -109,5 +166,14 @@ mod tests {
         assert_eq!(extract_json("```json\n{\"a\":1}\n```").unwrap()["a"], 1);
         assert_eq!(extract_json("{\"a\":2}").unwrap()["a"], 2);
         assert!(extract_json("no json here").is_none());
+    }
+
+    #[test]
+    fn detected_language() {
+        let v = json!({"language": "swedish", "language_probabilities": {"sv": 0.3, "da": 0.6, "no": 0.1}});
+        assert_eq!(detected(&v), "da");
+        assert_eq!(detected(&json!({"language": "Swedish"})), "sv");
+        assert_eq!(detected(&json!({})), "");
+        assert_eq!(heard_from(&v, "sv").lang, "sv");
     }
 }

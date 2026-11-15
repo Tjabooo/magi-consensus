@@ -6,6 +6,7 @@ mod ears;
 mod exec;
 mod fast;
 mod llm;
+mod memory;
 mod out;
 mod ptt;
 mod rules;
@@ -20,7 +21,7 @@ const HELP: &str = "\
 consensus: a local assistant where three LLM units vote on every action
 
 USAGE
-  consensus ask [--dry-run] [--quiet] [--vote] TEXT...
+  consensus ask [--dry-run] [--quiet] [--vote] [--lang CODE] TEXT...
                                                 your own [[commands]] run at once; anything else
                                                 is planned, voted on, and run if approved
   consensus ptt start|stop|toggle|cancel        push to talk (bind start on press, stop on release)
@@ -31,11 +32,13 @@ USAGE
   consensus check COMMAND...                    hard rules only, no models
   consensus hear FILE.wav                       transcribe only (tests the speech endpoint)
   consensus log [N]                             last N decisions (default 10)
+  consensus forget                              clear the conversation memory
   consensus config                              config path + effective settings
 
   --dry-run   vote but never run the command
   --quiet     no voice (the card still shows)
   --vote      skip the fast path: always plan and vote
+  --lang      the language TEXT was spoken in (sv, zh, ...), as if it came from the microphone
 
 Config: $XDG_CONFIG_HOME/magi-consensus/config.toml (MAGI_CONSENSUS_CONFIG overrides)
 Log:    $XDG_STATE_HOME/magi-consensus/votes.jsonl";
@@ -44,6 +47,7 @@ fn now_ms() -> u128 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
 }
 
+#[derive(Clone)]
 struct Opts {
     dry_run: bool,
     quiet: bool,
@@ -51,6 +55,8 @@ struct Opts {
     vote: bool,
     /// run the planner's command after the hard rules without a council vote (wake-word requests)
     skip_vote: bool,
+    /// language the request was spoken in (Whisper's code; "" = typed or unknown)
+    lang: String,
 }
 
 /// Every request goes here: your own phrases first, the council for everything else.
@@ -76,6 +82,7 @@ fn run_fast(cfg: &Config, request: &str, steps: &[fast::Step], o: &Opts) -> i32 
         return 0;
     }
     let rep = fast::run(cfg, steps);
+    memory::add(cfg, request, &format!("(did: {}) {}", rep.lines.join("; "), rep.speech.join(" ")));
     record["result"] = json!(if rep.ok { "fast" } else { "fast-failed" });
     record["lines"] = json!(rep.lines);
     record["ms"] = json!(t0.elapsed().as_millis());
@@ -117,8 +124,15 @@ fn cmd_ears(cfg: &Config, what: &str, rest: &[String]) -> i32 {
     match what {
         "run" => {
             let c2 = cfg.clone();
-            match ears::run(cfg, move |text: &str| {
-                let o = Opts { dry_run: false, quiet: false, source: "ears", vote: false, skip_vote: !c2.ears.vote };
+            match ears::run(cfg, move |text: &str, lang: &str| {
+                let o = Opts {
+                    dry_run: false,
+                    quiet: false,
+                    source: "ears",
+                    vote: false,
+                    skip_vote: !c2.ears.vote,
+                    lang: lang.to_string(),
+                };
                 handle(&c2, text, &o);
             }) {
                 Ok(()) => 0,
@@ -232,18 +246,21 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
     let f = Fmt(&cfg.notify);
     let t0 = Instant::now();
     let mut record = json!({"t": now_ms(), "source": o.source, "request": request, "dry_run": o.dry_run});
-    let say = |text: &str| {
+    let say_in = |text: &str, lang: &str| {
         if !o.quiet {
-            out::speak(cfg, text);
+            out::speak_in(cfg, text, lang);
         }
     };
+    let say = |text: &str| say_in(text, "en");
 
     let mut thinking = Card::new("deliberating");
     thinking.lines.push(f.plain(&format!("“{request}”")));
     out::card(cfg, &thinking);
 
     let context = exec::context(cfg);
-    let action: Action = match council::plan(cfg, request, &context) {
+    let history = memory::recent(cfg);
+    record["lang"] = json!(o.lang);
+    let action: Action = match council::plan(cfg, request, &o.lang, &context, &history) {
         Ok(a) => a,
         Err(e) => {
             eprintln!("planner: {e}");
@@ -270,7 +287,10 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
         record["result"] = json!(action.kind);
         record["ms"] = json!(t0.elapsed().as_millis());
         out::log(&record);
-        say(&action.reply);
+        if !o.dry_run {
+            memory::add(cfg, request, &action.reply);
+        }
+        say_in(&action.reply, &action.reply_language);
         return 0;
     }
 
@@ -336,6 +356,7 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
             .find(|b| !b.approve && !b.error)
             .map(|b| format!("{} says: {}", title_case(&b.unit), b.reason))
             .unwrap_or_default();
+        memory::add(cfg, request, &format!("(proposed `{}`, denied by the vote) {reason}", action.command));
         say(&format!("Denied, {yes} of {n}. {reason}"));
         return 2;
     }
@@ -394,7 +415,8 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
     record["run"] = json!(if private { res.redacted() } else { res.clone() });
     record["ms"] = json!(t0.elapsed().as_millis());
     out::log(&record);
-    say(&spoken);
+    memory::add(cfg, request, &format!("(ran `{}`) {spoken}", action.command));
+    say_in(&spoken, if res.ok() { &action.reply_language } else { "en" });
     code_of(&res)
 }
 
@@ -422,7 +444,10 @@ fn cmd_ptt(cfg: &Config, what: &str, o_pid: Option<&str>, o: &mut Opts) -> i32 {
         c.lines.push(f.color("dim", "heard you, writing it down"));
         out::card(cfg, &c);
         match ptt::finish(cfg, pid) {
-            Ok(Some(text)) => handle(cfg, &text, o),
+            Ok(Some(heard)) => {
+                let o = Opts { lang: heard.lang.clone(), ..o.clone() };
+                handle(cfg, &heard.text, &o)
+            }
             Ok(None) => {
                 let mut c = Card::new("heard nothing");
                 c.lines.push(f.color("dim", "too quiet or empty: nothing to vote on"));
@@ -520,10 +545,13 @@ fn main() {
             std::process::exit(78);
         }
     };
-    let mut o = Opts { dry_run: false, quiet: false, source: "text", vote: false, skip_vote: false };
+    let mut o =
+        Opts { dry_run: false, quiet: false, source: "text", vote: false, skip_vote: false, lang: String::new() };
     let mut rest: Vec<String> = Vec::new();
-    for a in &args[1..] {
+    let mut it = args[1..].iter();
+    while let Some(a) = it.next() {
         match a.as_str() {
+            "--lang" => o.lang = it.next().cloned().unwrap_or_default(),
             "--dry-run" | "-n" => o.dry_run = true,
             "--quiet" | "-q" => o.quiet = true,
             "--vote" => o.vote = true,
@@ -542,6 +570,11 @@ fn main() {
         }
         "ears" => cmd_ears(&cfg, rest.first().map(String::as_str).unwrap_or("status"), rest.get(1..).unwrap_or(&[])),
         "commands" => cmd_commands(&cfg),
+        "forget" => {
+            memory::clear();
+            println!("conversation forgotten");
+            0
+        }
         "ptt" => {
             cmd_ptt(&cfg, rest.first().map(String::as_str).unwrap_or("toggle"), rest.get(1).map(String::as_str), &mut o)
         }
@@ -556,9 +589,15 @@ fn main() {
             }
         },
         "hear" => match rest.first().map(std::fs::read) {
-            Some(Ok(wav)) => match llm::transcribe(&cfg.endpoint, &wav, &cfg.voice.language, &cfg.voice.prompt) {
+            Some(Ok(wav)) => match llm::transcribe(
+                &cfg.endpoint,
+                &wav,
+                &cfg.voice.language,
+                &cfg.voice.prompt,
+                &cfg.voice.language_remap,
+            ) {
                 Ok(t) => {
-                    println!("{t}");
+                    println!("{} [{}]", t.text, if t.lang.is_empty() { "?" } else { &t.lang });
                     0
                 }
                 Err(e) => {
