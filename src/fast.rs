@@ -693,4 +693,27 @@ launch = "flatpak run org.vinegarhq.Sober"
         assert!(match_one(&c, &comp, "fullscreen roblox", &all).is_some());
         assert!(match_one(&c, &comp, "write me a poem", &all).is_none());
     }
+
+    #[test]
+    fn unfullscreen_phrasings() {
+        let c = cfg();
+        let comp = compiled(&c);
+        // Whisper writes "Un-fullscreen this window, please."
+        for said in [
+            "Un-fullscreen this window, please.",
+            "unfullscreen it",
+            "un full screen roblox",
+            "exit fullscreen",
+            "leave fullscreen on this window",
+            "take this window out of fullscreen",
+            "make it windowed",
+        ] {
+            let n = normalize(said);
+            let p = parts(&c, &n);
+            assert_eq!(p.len(), 1, "{said}: {p:?}");
+            let m = match_one(&c, &comp, &p[0], &[]);
+            assert!(m.is_some(), "{said} did not match");
+            assert_eq!(c.commands[m.unwrap().command].run, "@unfullscreen", "{said} matched the wrong command");
+        }
+    }
 }

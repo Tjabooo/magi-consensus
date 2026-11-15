@@ -163,7 +163,10 @@ say = ["[make] {app} (fullscreen|full_screen)", "(fullscreen|full_screen) [it|th
 run = "@fullscreen"
 
 [[commands]]
-say = ["(exit|leave|unfullscreen|un_fullscreen) [fullscreen|full_screen]", "(exit|leave|unfullscreen) {app} [fullscreen|full_screen]"]
+say = ["(exit|leave|unfullscreen|un_fullscreen|un_full_screen) [fullscreen|full_screen]",
+  "(exit|leave|unfullscreen|un_fullscreen|un_full_screen) {app} [fullscreen|full_screen]",
+  "(exit|leave) (fullscreen|full_screen) [on|for|in] {app}", "(take|get) {app} out of (fullscreen|full_screen)",
+  "make {app} (not_fullscreen|not_full_screen|windowed)"]
 run = "@unfullscreen"
 
 [[commands]]
@@ -222,7 +225,7 @@ keywords = ["MAGI", "MAGGIE"]   # any of these wakes it; spelled like they sound
 threshold = 0.20                # lower = wakes more easily (and more often by mistake)
 score = 2.0                     # boost for keyword paths
 threads = 1
-record = ["pw-record", "--rate", "16000", "--channels", "1", "--format", "s16", "-"]
+record = ["pw-record", "--raw", "--rate", "16000", "--channels", "1", "--format", "s16", "-"]   # --raw: without it stdout is Sun AU (big-endian)
 preroll_ms = 1500               # audio before the wake word that goes to Whisper too
 silence_ms = 800                # this much quiet ends the request
 start_timeout_ms = 3000         # give up if nothing is said after the wake word
