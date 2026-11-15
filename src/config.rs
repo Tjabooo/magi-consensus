@@ -39,9 +39,8 @@ pub struct Fast {
     pub fullscreen_cmd: String,
     /// played (in the background) after fast commands that say nothing
     pub done_sound: String,
-    /// true = your [[commands]] replace the built-in ones instead of coming before them
-    #[serde(default)]
-    pub own_commands_only: bool,
+    // `own_commands_only` is read from the raw TOML in parse(): your [[commands]] replace the
+    // built-in ones instead of coming before them
 }
 
 /// An app the fast path can name: `{app}` in a phrase.
