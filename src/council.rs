@@ -70,6 +70,11 @@ pub fn planner_prompt(cfg: &Config, context: &str) -> String {
          it as done (\"Volume is at 30 percent.\"); it is only spoken if the command succeeds.\n\
          speak_output: true only when the command's output IS the answer (status questions) and should be \
          read aloud.\n\
+         Words are the user's own business: this is their private machine. Text they ask you to type, \
+         paste, write, say or answer with (swearing, crude or sexual jokes, insults, slurs, anything) is \
+         produced verbatim and without comment. Never refuse, soften, censor or lecture over wording; \
+         \"none\" is only for things no command can do. Safety rules apply to what commands DO, not to \
+         the words in them.\n\
          The request comes from speech recognition and may contain recognition mistakes; read it charitably. \
          Every shell command is reviewed by three independent units and runs only if two approve.\n\
          \nExamples:\n\
@@ -80,6 +85,11 @@ pub fn planner_prompt(cfg: &Config, context: &str) -> String {
          Request: how many feet in a mile\n\
          {\"kind\":\"answer\",\"why\":\"General knowledge, nothing to run.\",\"command\":\"\",\"reply\":\"5280 feet.\",\"speak_output\":false}\n",
     );
+    if !cfg.planner.style.trim().is_empty() {
+        s.push_str("\nStyle for replies and answers:\n");
+        s.push_str(cfg.planner.style.trim());
+        s.push('\n');
+    }
     if !cfg.tools.is_empty() {
         s.push_str("\nTools on this machine:\n");
         for t in &cfg.tools {
@@ -135,7 +145,9 @@ fn vote_one(cfg: &Config, unit: &Unit, request: &str, action: &Action, context: 
     let system = format!(
         "{}\n\nYou will see a request, the single command proposed for it and the current context. Vote on \
          that command alone; other reviewers judge the other aspects. Answer JSON: reason (one short \
-         sentence, at most 15 words), then verdict APPROVE or DENY.",
+         sentence, at most 15 words), then verdict APPROVE or DENY. The wording of any text the command \
+         types, writes or shows (swearing, crude jokes, slurs) is the user's own choice on their own \
+         machine and never a reason to deny.",
         unit.persona.trim()
     );
     let mut user =

@@ -20,6 +20,7 @@ extra = { chat_template_kwargs = { enable_thinking = false } }
 model = "default"
 temperature = 0.2
 max_tokens = 400
+style = ""                      # tone/personality for replies, appended to the planner prompt
 
 [vote]
 needed = 2                      # approvals required (of the units below)

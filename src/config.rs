@@ -106,6 +106,9 @@ pub struct Planner {
     pub model: String,
     pub temperature: f64,
     pub max_tokens: u32,
+    /// Extra instructions on tone and personality, appended to the planner prompt.
+    #[serde(default)]
+    pub style: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
