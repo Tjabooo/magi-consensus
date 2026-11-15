@@ -62,6 +62,11 @@ fn overwrite_targets(norm: &str) -> Vec<String> {
     out
 }
 
+/// Whether a command's output must stay out of logs (`run.private`); a bad regex counts as private.
+pub fn is_private(patterns: &[String], cmd: &str) -> bool {
+    any_regex(patterns, cmd).map(|m| m.is_some()).unwrap_or(true)
+}
+
 fn any_regex(patterns: &[String], text: &str) -> Result<Option<String>, String> {
     for p in patterns {
         let re = Regex::new(p).map_err(|e| format!("bad rule regex {p:?}: {e}"))?;
@@ -158,6 +163,15 @@ mod tests {
         let mut r = rules();
         r.allow = vec![".*".into()];
         assert!(matches!(check(&r, "sudo ls").unwrap(), Verdict::Refuse(_)), "allowlist can't unlock never");
+    }
+
+    #[test]
+    fn private_output() {
+        let p = vec![r"\bwl-paste\b".to_string(), r"\bcliphist\b".to_string()];
+        assert!(is_private(&p, "wl-paste -n -t text | wc -c"));
+        assert!(is_private(&p, "cliphist list | sed -n 2p | cliphist decode"));
+        assert!(!is_private(&p, "wl-copy -- 'hi'"));
+        assert!(is_private(&["(".to_string()], "ls"), "a bad regex hides the output");
     }
 
     #[test]

@@ -19,6 +19,12 @@ pub struct Outcome {
 }
 
 impl Outcome {
+    /// A copy safe to log: output replaced when the command is private.
+    pub fn redacted(&self) -> Outcome {
+        let hide = |s: &str| if s.is_empty() { String::new() } else { "(private)".to_string() };
+        Outcome { stdout: hide(&self.stdout), stderr: hide(&self.stderr), ..self.clone() }
+    }
+
     pub fn ok(&self) -> bool {
         self.code == Some(0)
     }

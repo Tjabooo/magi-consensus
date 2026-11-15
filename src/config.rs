@@ -131,6 +131,9 @@ pub struct Run {
     pub max_output: usize,
     pub cwd: String,
     pub path_prepend: Vec<String>,
+    /// Regexes: a command matching one has its output kept out of the log and the card (clipboard reads).
+    #[serde(default)]
+    pub private: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

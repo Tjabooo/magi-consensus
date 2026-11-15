@@ -321,7 +321,18 @@ fn squash(s: &str) -> String {
 }
 
 /// Words → app. Configured names and aliases first, then the class of an open window.
+/// A possessive ("discords" from "Discord's") falls back to the name without the s.
 pub fn resolve(cfg: &Config, words: &str, all: &[Window]) -> Option<Target> {
+    resolve_exact(cfg, words, all).or_else(|| {
+        let w = words.strip_suffix('s').filter(|w| w.len() >= 3)?;
+        match resolve_exact(cfg, w, all) {
+            Some(Target::Previous) => None,
+            t => t,
+        }
+    })
+}
+
+fn resolve_exact(cfg: &Config, words: &str, all: &[Window]) -> Option<Target> {
     let w = strip_words(words, &["the".into(), "my".into(), "a".into()], true);
     if matches!(w.as_str(), "it" | "this" | "that" | "this window" | "that window" | "the window" | "this app") {
         return Some(Target::Previous);

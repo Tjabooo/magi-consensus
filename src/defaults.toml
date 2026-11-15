@@ -59,6 +59,8 @@ timeout = 20                    # seconds, then the command's process group is k
 max_output = 4000               # bytes of stdout/stderr kept
 cwd = "~"
 path_prepend = ["~/.local/bin"] # hotkey daemons often start without these on PATH
+# commands whose output never reaches votes.jsonl/last.json or the card (it is still spoken if asked)
+private = ['\bwl-paste\b', '\bcliphist\b']
 
 # Hard rules: checked before any vote; a hit is refused outright. Words are matched after quotes and
 # backslashes are stripped and the command is split on whitespace and shell punctuation; a path counts
@@ -150,7 +152,9 @@ say = ["(open|launch|start|run) {app}"]
 run = "@open"
 
 [[commands]]
-say = ["(focus|show|switch_to|go_to|bring_up) {app}"]
+say = ["(focus|show|switch_to|go_to|bring_up) {app}",
+  "(go_to|switch_to|show_me|take_me_to|jump_to|show) [the] (workspace|desktop|screen) (with|where|that_has|with_the) {app} [is|is_on|on_it|in_it]",
+  "(go|switch|jump|take_me) to {app} (workspace|desktop|screen)", "where is {app}"]
 run = "@focus"
 
 [[commands]]
@@ -193,6 +197,15 @@ run = "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 10%+"
 [[commands]]
 say = ["(volume_down|quieter|turn_it_down)", "turn [the] volume down"]
 run = "wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%-"
+
+[[commands]]
+say = ["(read|whats_in|what_is_in|whats_on|what_is_on) [me] [my|the] clipboard", "what did i [just] copy", "read [me] what i copied"]
+run = "wl-paste -n -t text"
+speak_output = true
+
+[[commands]]
+say = ["(paste|type) [my|the] clipboard", "(paste|type) what i copied"]
+run = "wl-paste -n -t text | wtype -"
 
 [[commands]]
 say = ["[what] time is it", "whats the time"]

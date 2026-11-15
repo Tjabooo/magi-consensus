@@ -340,6 +340,7 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
     }
 
     let res = exec::run(&cfg.run, &action.command, Duration::from_secs(cfg.run.timeout));
+    let private = rules::is_private(&cfg.run.private, &action.command);
     println!("APPROVED: {yes}/{n} → exit {:?} in {} ms", res.code, res.ms);
     if !res.stdout.is_empty() {
         println!("{}", res.stdout);
@@ -365,8 +366,8 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
         format!("That failed. {first}")
     };
     let tail = if res.ok() {
-        let first = res.stdout.lines().next().unwrap_or("");
-        if first.is_empty() {
+        let first = if private { "(private)" } else { res.stdout.lines().next().unwrap_or("") };
+        if res.stdout.is_empty() {
             f.color("approve", "done")
         } else {
             f.color("dim", &format!("→ {}", first.chars().take(120).collect::<String>()))
@@ -378,7 +379,7 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
     c.critical = !res.ok();
     out::card(cfg, &c);
     record["result"] = json!(if res.ok() { "ran" } else { "failed" });
-    record["run"] = json!(res);
+    record["run"] = json!(if private { res.redacted() } else { res.clone() });
     record["ms"] = json!(t0.elapsed().as_millis());
     out::log(&record);
     say(&spoken);
