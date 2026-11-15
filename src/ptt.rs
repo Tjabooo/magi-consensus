@@ -120,7 +120,11 @@ pub fn watch(cfg: &Config, pid: u32) -> bool {
             if held() {
                 up_since = None;
             } else if up_since.get_or_insert_with(Instant::now).elapsed() >= Duration::from_millis(250) {
-                eprintln!("{} ptt: {} released but no stop came from the compositor, stopping", stamp(), cfg.voice.hold_key);
+                eprintln!(
+                    "{} ptt: {} released but no stop came from the compositor, stopping",
+                    stamp(),
+                    cfg.voice.hold_key
+                );
                 return true;
             }
         }

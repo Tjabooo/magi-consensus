@@ -530,7 +530,9 @@ fn main() {
         }
         "ears" => cmd_ears(&cfg, rest.first().map(String::as_str).unwrap_or("status"), rest.get(1..).unwrap_or(&[])),
         "commands" => cmd_commands(&cfg),
-        "ptt" => cmd_ptt(&cfg, rest.first().map(String::as_str).unwrap_or("toggle"), rest.get(1).map(String::as_str), &mut o),
+        "ptt" => {
+            cmd_ptt(&cfg, rest.first().map(String::as_str).unwrap_or("toggle"), rest.get(1).map(String::as_str), &mut o)
+        }
         "check" => match rules::check(&cfg.rules, &rest.join(" ")) {
             Ok(rules::Verdict::Pass) => {
                 println!("pass (would go to the vote)");
