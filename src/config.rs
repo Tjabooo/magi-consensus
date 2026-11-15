@@ -90,6 +90,10 @@ pub struct Ears {
     pub speech_factor: f64,
     pub wake_sound: String,
     pub require_wake_word: bool,
+    /// false: wake-word requests that aren't your own phrases run the planner's command after the
+    /// hard rules, without a council vote (push to talk and `ask` still vote)
+    #[serde(default)]
+    pub vote: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -49,6 +49,8 @@ struct Opts {
     quiet: bool,
     source: &'static str,
     vote: bool,
+    /// run the planner's command after the hard rules without a council vote (wake-word requests)
+    skip_vote: bool,
 }
 
 /// Every request goes here: your own phrases first, the council for everything else.
@@ -116,7 +118,7 @@ fn cmd_ears(cfg: &Config, what: &str, rest: &[String]) -> i32 {
         "run" => {
             let c2 = cfg.clone();
             match ears::run(cfg, move |text: &str| {
-                let o = Opts { dry_run: false, quiet: false, source: "ears", vote: false };
+                let o = Opts { dry_run: false, quiet: false, source: "ears", vote: false, skip_vote: !c2.ears.vote };
                 handle(&c2, text, &o);
             }) {
                 Ok(()) => 0,
@@ -294,22 +296,32 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
         }
     }
 
-    let mut voting = Card::new("voting");
-    voting.lines.push(f.color("dim", &format!("“{request}”")));
-    voting.lines.push(f.command(&action.command));
-    out::card(cfg, &voting);
-
-    let ballots = council::vote(cfg, request, &action, &context);
+    let ballots = if o.skip_vote {
+        Vec::new()
+    } else {
+        let mut voting = Card::new("voting");
+        voting.lines.push(f.color("dim", &format!("“{request}”")));
+        voting.lines.push(f.command(&action.command));
+        out::card(cfg, &voting);
+        council::vote(cfg, request, &action, &context)
+    };
     let yes = council::approvals(&ballots);
     let n = ballots.len();
-    let approved = yes >= cfg.vote.needed;
+    let approved = o.skip_vote || yes >= cfg.vote.needed;
+    record["voted"] = json!(!o.skip_vote);
     for b in &ballots {
         println!("{:<9} {:<7} {} ({} ms)", b.unit, if b.approve { "APPROVE" } else { "DENY" }, b.reason, b.ms);
     }
     record["votes"] = json!(ballots);
     record["approved"] = json!(approved);
 
-    let mut c = Card::new(if approved { format!("APPROVED {yes}/{n}") } else { format!("DENIED {yes}/{n}") });
+    let mut c = Card::new(if o.skip_vote {
+        "RUN (no vote)".to_string()
+    } else if approved {
+        format!("APPROVED {yes}/{n}")
+    } else {
+        format!("DENIED {yes}/{n}")
+    });
     c.lines.push(f.command(&action.command));
     c.lines.extend(ballots.iter().map(|b| f.ballot(b)));
 
@@ -508,7 +520,7 @@ fn main() {
             std::process::exit(78);
         }
     };
-    let mut o = Opts { dry_run: false, quiet: false, source: "text", vote: false };
+    let mut o = Opts { dry_run: false, quiet: false, source: "text", vote: false, skip_vote: false };
     let mut rest: Vec<String> = Vec::new();
     for a in &args[1..] {
         match a.as_str() {

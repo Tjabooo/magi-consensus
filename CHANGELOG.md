@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Wake-word requests that aren't your own phrases run the planner's command after the hard rules
+  without a council vote (`ears.vote = false`, the default); push to talk and `ask` still vote.
+- Ears read Sun AU from `pw-record` without `--raw` correctly (big-endian); defaults use `--raw`.
+
 ## 0.2.1 (2026-11-16)
 
 - Push to talk no longer gets stuck on "listening…": a watcher reads the hold key from the keyboard

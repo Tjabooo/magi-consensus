@@ -233,3 +233,4 @@ max_seconds = 10
 speech_factor = 3.0             # louder than noise floor × this counts as speech
 wake_sound = ""                 # played when it wakes, e.g. "pw-play ~/sounds/wake.wav"
 require_wake_word = true        # Whisper must hear a wake word too (cuts false wakes)
+vote = false                    # wake-word requests skip the council vote (hard rules still apply); push to talk votes

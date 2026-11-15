@@ -348,6 +348,21 @@ pub fn run(cfg: &Config, handle: impl Fn(&str) + Send + Sync + 'static) -> Resul
         .spawn()
         .map_err(|e| format!("can't start {}: {e}", cfg.ears.record[0]))?;
     let mut mic = child.stdout.take().ok_or("no recorder output")?;
+    // pw-record without --raw writes Sun AU to stdout: ".snd" header, big-endian samples
+    let mut head = [0u8; 4];
+    mic.read_exact(&mut head).map_err(|e| format!("recorder stopped: {e}"))?;
+    let mut carry: Vec<u8> = Vec::new();
+    let big_endian = &head == b".snd";
+    if big_endian {
+        let mut off = [0u8; 4];
+        mic.read_exact(&mut off).map_err(|e| format!("recorder stopped: {e}"))?;
+        let skip = (u32::from_be_bytes(off) as usize).saturating_sub(8);
+        let mut rest = vec![0u8; skip];
+        mic.read_exact(&mut rest).map_err(|e| format!("recorder stopped: {e}"))?;
+        eprintln!("ears: recorder writes Sun AU (add --raw to ears.record); decoding big-endian");
+    } else {
+        carry.extend_from_slice(&head);
+    }
     eprintln!("ears: listening for {:?} (threshold {}, {})", cfg.ears.keywords, cfg.ears.threshold, cfg.ears.model_dir);
 
     let handle = Arc::new(handle);
@@ -366,8 +381,16 @@ pub fn run(cfg: &Config, handle: impl Fn(&str) + Send + Sync + 'static) -> Resul
     let mut recent: VecDeque<i16> = VecDeque::with_capacity(RATE);
 
     loop {
-        mic.read_exact(&mut buf).map_err(|e| format!("recorder stopped: {e}"))?;
-        let pcm: Vec<i16> = buf.as_chunks::<2>().0.iter().map(|c| i16::from_le_bytes(*c)).collect();
+        let n = carry.len();
+        buf[..n].copy_from_slice(&carry);
+        carry.clear();
+        mic.read_exact(&mut buf[n..]).map_err(|e| format!("recorder stopped: {e}"))?;
+        let pcm: Vec<i16> = buf
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| if big_endian { i16::from_be_bytes(*c) } else { i16::from_le_bytes(*c) })
+            .collect();
 
         for f in pcm.chunks(FRAME) {
             let r = rms(f);
