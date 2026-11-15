@@ -170,6 +170,12 @@ say = ["(exit|leave|unfullscreen|un_fullscreen|un_full_screen) [fullscreen|full_
 run = "@unfullscreen"
 
 [[commands]]
+# Enter in the focused window: sends what is typed in a chat box (Discord, games, browsers)
+say = ["(send|submit|post) [it|this|that|message|the_message|my_message|this_message|that_message|the_text]",
+  "(hit|press|push) (enter|return|send)", "send [it|the_message] (now|off)"]
+run = "wtype -k Return"
+
+[[commands]]
 say = ["(close|quit) {app}"]
 run = "@close"
 

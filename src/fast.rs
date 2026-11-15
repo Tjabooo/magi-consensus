@@ -695,6 +695,23 @@ launch = "flatpak run org.vinegarhq.Sober"
     }
 
     #[test]
+    fn send_presses_enter() {
+        let c = cfg();
+        let comp = compiled(&c);
+        for said in ["Send the message.", "send it", "send", "hit enter", "press send", "send it off"] {
+            let p = parts(&c, &normalize(said));
+            let m = match_one(&c, &comp, &p[0], &[]).unwrap_or_else(|| panic!("{said} did not match"));
+            assert_eq!(c.commands[m.command].run, "wtype -k Return", "{said}");
+        }
+        // sending somewhere else, or typing first, is not a bare Enter
+        for said in ["send a message to ebi", "send the file to my phone"] {
+            let p = parts(&c, &normalize(said));
+            let m = match_one(&c, &comp, &p[0], &[]);
+            assert!(m.is_none_or(|m| c.commands[m.command].run != "wtype -k Return"), "{said} pressed Enter");
+        }
+    }
+
+    #[test]
     fn unfullscreen_phrasings() {
         let c = cfg();
         let comp = compiled(&c);
