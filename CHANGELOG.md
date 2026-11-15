@@ -9,6 +9,7 @@
 - `consensus ears`: always-on wake word with a sherpa-onnx keyword spotter on the CPU, end-of-speech
   detection, Whisper wake-word check against false wakes; `on/off/toggle/status/test`.
 - `consensus commands`, `ask --vote`. Your `[[commands]]` extend the built-ins.
+- `consensus ears debug on|off`: saves every burst of speech (last 40) with whether it woke, to tune the wake word.
 
 ## 0.1.0 (2026-11-14)
 

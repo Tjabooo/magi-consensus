@@ -21,6 +21,37 @@ pub fn paused_flag() -> PathBuf {
     config::state_dir().join("ears-paused")
 }
 
+/// `consensus ears debug on`: every burst of speech is saved (last 40) with whether it woke.
+pub fn debug_flag() -> PathBuf {
+    config::state_dir().join("ears-debug")
+}
+
+pub fn debug_dir() -> PathBuf {
+    config::state_dir().join("debug")
+}
+
+fn save_burst(pcm: &[i16], woke: bool) {
+    let dir = debug_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    let peak = pcm.iter().map(|s| (*s as i32).abs()).max().unwrap_or(0);
+    let name = format!("{ms}_{}_peak{peak}.wav", if woke { "WOKE" } else { "nowake" });
+    let _ = std::fs::write(dir.join(&name), wav(pcm));
+    eprintln!(
+        "ears: speech {:.1} s, peak {peak}, rms {:.0}: {} → debug/{name}",
+        pcm.len() as f64 / RATE as f64,
+        rms(pcm),
+        if woke { "woke" } else { "no wake" }
+    );
+    let mut files: Vec<PathBuf> =
+        std::fs::read_dir(&dir).map(|r| r.flatten().map(|e| e.path()).collect()).unwrap_or_default();
+    files.sort();
+    let extra = files.len().saturating_sub(40);
+    for f in &files[..extra] {
+        let _ = std::fs::remove_file(f);
+    }
+}
+
 pub fn paused() -> bool {
     paused_flag().exists()
 }
@@ -329,6 +360,10 @@ pub fn run(cfg: &Config, handle: impl Fn(&str) + Send + Sync + 'static) -> Resul
     let mut buf = vec![0u8; CHUNK * 2];
     let mut was_paused = paused();
     let mut last_pause_check = Instant::now();
+    let mut debug = debug_flag().exists();
+    // debug: the current burst of speech, its trailing quiet, whether it woke
+    let mut burst: Option<(Vec<i16>, u64, bool)> = None;
+    let mut recent: VecDeque<i16> = VecDeque::with_capacity(RATE);
 
     loop {
         mic.read_exact(&mut buf).map_err(|e| format!("recorder stopped: {e}"))?;
@@ -344,11 +379,42 @@ pub fn run(cfg: &Config, handle: impl Fn(&str) + Send + Sync + 'static) -> Resul
 
         if last_pause_check.elapsed() > Duration::from_millis(500) {
             last_pause_check = Instant::now();
+            let d = debug_flag().exists();
+            if d != debug {
+                eprintln!("ears: debug {}", if d { "on (saving speech to debug/)" } else { "off" });
+                debug = d;
+            }
             let p = paused();
             if p != was_paused {
                 eprintln!("ears: {}", if p { "paused" } else { "listening" });
                 was_paused = p;
             }
+        }
+
+        if debug {
+            let loud = rms(&pcm) > (floor * cfg.ears.speech_factor).max(cfg.voice.min_rms);
+            burst = match burst.take() {
+                None if loud => {
+                    let mut b: Vec<i16> = recent.iter().copied().collect();
+                    b.extend_from_slice(&pcm);
+                    Some((b, 0, false))
+                }
+                None => None,
+                Some((mut b, q, w)) => {
+                    b.extend_from_slice(&pcm);
+                    let q = if loud { 0 } else { q + 100 };
+                    if q >= 600 || b.len() > 8 * RATE {
+                        save_burst(&b, w);
+                        None
+                    } else {
+                        Some((b, q, w))
+                    }
+                }
+            };
+        }
+        recent.extend(pcm.iter().copied());
+        while recent.len() > RATE / 2 {
+            recent.pop_front();
         }
 
         state = match state {
@@ -372,6 +438,9 @@ pub fn run(cfg: &Config, handle: impl Fn(&str) + Send + Sync + 'static) -> Resul
                     match woke {
                         Some(w) => {
                             eprintln!("ears: wake ({w})");
+                            if let Some(b) = burst.as_mut() {
+                                b.2 = true;
+                            }
                             sh_bg(&cfg.ears.wake_sound);
                             let mut c = out::Card::new("listening…");
                             c.lines.push(out::Fmt(&cfg.notify).color("accent", "say it"));

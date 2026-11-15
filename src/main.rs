@@ -26,6 +26,7 @@ USAGE
   consensus ptt start|stop|toggle|cancel        push to talk (bind start on press, stop on release)
   consensus ears run|on|off|toggle|status       always-on listening for the wake word (run = daemon)
   consensus ears test FILE.wav                  where the wake word is heard in a 16 kHz mono WAV
+  consensus ears debug on|off                   save every burst of speech (last 40) to tune the wake word
   consensus commands                            the fast phrases, as configured
   consensus check COMMAND...                    hard rules only, no models
   consensus hear FILE.wav                       transcribe only (tests the speech endpoint)
@@ -147,6 +148,26 @@ fn cmd_ears(cfg: &Config, what: &str, rest: &[String]) -> i32 {
             println!("{}", if ears::paused() { "paused" } else { "listening" });
             0
         }
+        "debug" => {
+            let on = rest.first().map(String::as_str) != Some("off");
+            let f = ears::debug_flag();
+            let r = if on {
+                std::fs::create_dir_all(f.parent().unwrap()).and_then(|_| std::fs::write(&f, ""))
+            } else {
+                std::fs::remove_file(&f)
+                    .or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) })
+            };
+            match r {
+                Ok(()) => {
+                    println!("debug {}: {}", if on { "on" } else { "off" }, ears::debug_dir().display());
+                    0
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    1
+                }
+            }
+        }
         "test" => {
             let Some(path) = rest.first() else {
                 eprintln!("usage: consensus ears test FILE.wav");
@@ -183,7 +204,7 @@ fn cmd_ears(cfg: &Config, what: &str, rest: &[String]) -> i32 {
             }
         }
         _ => {
-            eprintln!("usage: consensus ears run|on|off|toggle|status|test FILE.wav");
+            eprintln!("usage: consensus ears run|on|off|toggle|status|test FILE.wav|debug on|off");
             64
         }
     }
