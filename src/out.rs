@@ -79,6 +79,16 @@ impl Fmt<'_> {
 
 /// Show (or replace) the single MAGI card.
 pub fn card(cfg: &Config, c: &Card) {
+    card_for(cfg, c, cfg.notify.timeout_ms);
+}
+
+/// Take the card down (replaced by one that expires at once).
+pub fn close_card(cfg: &Config) {
+    card_for(cfg, &Card::new("MAGI"), 1);
+}
+
+/// The card with its own lifetime in ms.
+pub fn card_for(cfg: &Config, c: &Card, timeout_ms: i64) {
     let n = &cfg.notify;
     if !n.enabled {
         return;
@@ -94,7 +104,7 @@ pub fn card(cfg: &Config, c: &Card) {
             "-u",
             if c.critical { "critical" } else { "normal" },
             "-t",
-            &n.timeout_ms.to_string(),
+            &timeout_ms.to_string(),
             &c.title,
             &c.lines.join("\n"),
         ])

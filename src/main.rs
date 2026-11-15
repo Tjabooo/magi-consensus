@@ -2,7 +2,9 @@
 
 mod config;
 mod council;
+mod ears;
 mod exec;
+mod fast;
 mod llm;
 mod out;
 mod ptt;
@@ -18,8 +20,13 @@ const HELP: &str = "\
 consensus: a local assistant where three LLM units vote on every action
 
 USAGE
-  consensus ask [--dry-run] [--quiet] TEXT...   plan, vote, and run if approved
+  consensus ask [--dry-run] [--quiet] [--vote] TEXT...
+                                                your own [[commands]] run at once; anything else
+                                                is planned, voted on, and run if approved
   consensus ptt start|stop|toggle|cancel        push to talk (bind start on press, stop on release)
+  consensus ears run|on|off|toggle|status       always-on listening for the wake word (run = daemon)
+  consensus ears test FILE.wav                  where the wake word is heard in a 16 kHz mono WAV
+  consensus commands                            the fast phrases, as configured
   consensus check COMMAND...                    hard rules only, no models
   consensus hear FILE.wav                       transcribe only (tests the speech endpoint)
   consensus log [N]                             last N decisions (default 10)
@@ -27,6 +34,7 @@ USAGE
 
   --dry-run   vote but never run the command
   --quiet     no voice (the card still shows)
+  --vote      skip the fast path: always plan and vote
 
 Config: $XDG_CONFIG_HOME/magi-consensus/config.toml (MAGI_CONSENSUS_CONFIG overrides)
 Log:    $XDG_STATE_HOME/magi-consensus/votes.jsonl";
@@ -39,6 +47,161 @@ struct Opts {
     dry_run: bool,
     quiet: bool,
     source: &'static str,
+    vote: bool,
+}
+
+/// Every request goes here: your own phrases first, the council for everything else.
+fn handle(cfg: &Config, request: &str, o: &Opts) -> i32 {
+    if !o.vote {
+        if let Some(steps) = fast::plan(cfg, request) {
+            return run_fast(cfg, request, &steps, o);
+        }
+    }
+    decide(cfg, request, o)
+}
+
+fn run_fast(cfg: &Config, request: &str, steps: &[fast::Step], o: &Opts) -> i32 {
+    let f = Fmt(&cfg.notify);
+    let t0 = Instant::now();
+    println!("request : {request}");
+    for s in steps {
+        println!("fast    : {}  →  {}", s.phrase, cfg.commands[s.command].run);
+    }
+    let mut record = json!({"t": now_ms(), "source": o.source, "request": request, "dry_run": o.dry_run,
+        "fast": steps.iter().map(|s| json!({"phrase": s.phrase, "run": cfg.commands[s.command].run})).collect::<Vec<_>>()});
+    if o.dry_run {
+        return 0;
+    }
+    let rep = fast::run(cfg, steps);
+    record["result"] = json!(if rep.ok { "fast" } else { "fast-failed" });
+    record["lines"] = json!(rep.lines);
+    record["ms"] = json!(t0.elapsed().as_millis());
+    out::log(&record);
+    let mut c = Card::new(if rep.ok { "done" } else { "failed" });
+    c.lines.push(f.color("dim", &format!("“{request}”")));
+    c.lines.extend(rep.lines.iter().map(|l| f.color(if l.starts_with('✓') { "approve" } else { "deny" }, l)));
+    c.critical = !rep.ok;
+    out::card_for(cfg, &c, if rep.ok { 2500 } else { cfg.notify.timeout_ms });
+    for l in &rep.lines {
+        println!("{l}");
+    }
+    if !o.quiet {
+        if rep.speech.is_empty() {
+            if !cfg.fast.done_sound.trim().is_empty() {
+                let _ = std::process::Command::new("sh")
+                    .args(["-c", &config::expand_cmd(&cfg.fast.done_sound)])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status();
+            }
+        } else {
+            out::speak(cfg, &rep.speech.join(" "));
+        }
+    }
+    if rep.ok {
+        0
+    } else {
+        1
+    }
+}
+
+fn cmd_ears(cfg: &Config, what: &str, rest: &[String]) -> i32 {
+    let note = |t: &str| {
+        let mut c = Card::new(t);
+        c.lines.push(Fmt(&cfg.notify).color("dim", "always-on listening"));
+        out::card_for(cfg, &c, 2500);
+    };
+    match what {
+        "run" => {
+            let c2 = cfg.clone();
+            match ears::run(cfg, move |text: &str| {
+                let o = Opts { dry_run: false, quiet: false, source: "ears", vote: false };
+                handle(&c2, text, &o);
+            }) {
+                Ok(()) => 0,
+                Err(e) => {
+                    eprintln!("ears: {e}");
+                    1
+                }
+            }
+        }
+        "on" | "off" | "toggle" => {
+            let pause = match what {
+                "on" => false,
+                "off" => true,
+                _ => !ears::paused(),
+            };
+            match ears::set_paused(pause) {
+                Ok(()) => {
+                    note(if pause { "ears off" } else { "ears on" });
+                    println!("{}", if pause { "paused" } else { "listening" });
+                    0
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    1
+                }
+            }
+        }
+        "status" => {
+            println!("{}", if ears::paused() { "paused" } else { "listening" });
+            0
+        }
+        "test" => {
+            let Some(path) = rest.first() else {
+                eprintln!("usage: consensus ears test FILE.wav");
+                return 64;
+            };
+            let pcm = match std::fs::read(path).map_err(|e| e.to_string()).and_then(|b| ears::read_wav(&b)) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("{path}: {e}");
+                    return 1;
+                }
+            };
+            let dir = config::expand(&cfg.ears.model_dir);
+            if let Ok(lines) = ears::keyword_lines(&dir, &cfg.ears.keywords) {
+                for l in lines {
+                    eprintln!("keyword: {l}");
+                }
+            }
+            match ears::spot_file(cfg, &pcm) {
+                Ok(hits) if hits.is_empty() => {
+                    println!("no wake word heard");
+                    1
+                }
+                Ok(hits) => {
+                    for (t, k) in hits {
+                        println!("{t:6.2} s  {k}");
+                    }
+                    0
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    1
+                }
+            }
+        }
+        _ => {
+            eprintln!("usage: consensus ears run|on|off|toggle|status|test FILE.wav");
+            64
+        }
+    }
+}
+
+fn cmd_commands(cfg: &Config) -> i32 {
+    for c in &cfg.commands {
+        println!("{}", c.say.join("  ·  "));
+        println!("    → {}", c.run);
+    }
+    if !cfg.apps.is_empty() {
+        println!();
+        for a in &cfg.apps {
+            let aka = if a.aliases.is_empty() { String::new() } else { format!(" ({})", a.aliases.join(", ")) };
+            println!("app {}{aka}", a.name);
+        }
+    }
+    0
 }
 
 /// The whole pipeline for one request. Returns the process exit code.
@@ -222,7 +385,7 @@ fn cmd_ptt(cfg: &Config, what: &str, o: &mut Opts) -> i32 {
         c.lines.push(f.color("dim", "transcribing"));
         out::card(cfg, &c);
         match ptt::stop(cfg) {
-            Ok(Some(text)) => decide(cfg, &text, o),
+            Ok(Some(text)) => handle(cfg, &text, o),
             Ok(None) => {
                 let mut c = Card::new("heard nothing");
                 c.lines.push(f.color("dim", "too quiet or empty: nothing to vote on"));
@@ -319,12 +482,13 @@ fn main() {
             std::process::exit(78);
         }
     };
-    let mut o = Opts { dry_run: false, quiet: false, source: "text" };
+    let mut o = Opts { dry_run: false, quiet: false, source: "text", vote: false };
     let mut rest: Vec<String> = Vec::new();
     for a in &args[1..] {
         match a.as_str() {
             "--dry-run" | "-n" => o.dry_run = true,
             "--quiet" | "-q" => o.quiet = true,
+            "--vote" => o.vote = true,
             _ => rest.push(a.clone()),
         }
     }
@@ -335,9 +499,11 @@ fn main() {
                 eprintln!("usage: consensus ask TEXT...");
                 64
             } else {
-                decide(&cfg, text.trim(), &o)
+                handle(&cfg, text.trim(), &o)
             }
         }
+        "ears" => cmd_ears(&cfg, rest.first().map(String::as_str).unwrap_or("status"), rest.get(1..).unwrap_or(&[])),
+        "commands" => cmd_commands(&cfg),
         "ptt" => cmd_ptt(&cfg, rest.first().map(String::as_str).unwrap_or("toggle"), &mut o),
         "check" => match rules::check(&cfg.rules, &rest.join(" ")) {
             Ok(rules::Verdict::Pass) => {

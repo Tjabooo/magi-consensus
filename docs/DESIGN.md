@@ -105,3 +105,22 @@ again". A hard `max_seconds` cap kills a forgotten recording. Quiet recordings (
 - Multi-step plans / tool loops (one action per request, on purpose).
 - Wake word. Conversation memory between requests.
 - Eww vote card in the MAGI panel (`last.json` is there for it).
+
+## Fast path (0.2.0)
+
+The council is slow on purpose (~5 s) and that's wrong for "clip that" in the middle of a fight. Phrases
+you wrote yourself in `[[commands]]` skip it: the request is normalised (lower case, number words →
+digits, wake words and fillers stripped), tried whole against every phrase, then split on "and" /
+"then" / punctuation. It takes the fast path only when every part matches; one unknown part sends the
+whole request to the planner, so a half-understood chain never half-runs. No vote is needed because
+nothing here was invented by a model: the command text is yours, slots are digits or resolved app
+windows, and `{text}` is shell-quoted.
+
+## Ears (0.2.0)
+
+`pw-record` → 100 ms chunks → sherpa-onnx keyword spotter (zipformer transducer, 3.3 M parameters,
+int8, one CPU thread) with your keywords tokenised from the model's `bpe.model`. On a hit, the last
+1.5 s (the wake word itself) plus everything until 0.8 s of quiet (noise floor × `speech_factor`) is
+sent to Whisper. Whisper has to hear a wake word in its first words too; a keyword-spotter false alarm
+("magic") then costs one transcription and nothing runs. While a request is handled, the spotter is
+paused, so the spoken answer can't wake it.

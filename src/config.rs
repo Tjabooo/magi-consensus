@@ -18,6 +18,79 @@ pub struct Config {
     pub tools: Vec<Tool>,
     pub notify: Notify,
     pub voice: Voice,
+    pub fast: Fast,
+    #[serde(default)]
+    pub apps: Vec<App>,
+    #[serde(default)]
+    pub commands: Vec<FastCommand>,
+    pub ears: Ears,
+}
+
+/// Fast path: your own phrases run at once, no model, no vote.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Fast {
+    pub enabled: bool,
+    pub step_delay_ms: u64,
+    pub launch_wait_s: u64,
+    pub wake_words: Vec<String>,
+    pub lead_fillers: Vec<String>,
+    pub tail_fillers: Vec<String>,
+    /// run instead of Hyprland's fullscreen ("{address}" = the window); empty = built in
+    pub fullscreen_cmd: String,
+    /// played (in the background) after fast commands that say nothing
+    pub done_sound: String,
+    /// true = your [[commands]] replace the built-in ones instead of coming before them
+    #[serde(default)]
+    pub own_commands_only: bool,
+}
+
+/// An app the fast path can name: `{app}` in a phrase.
+#[derive(Debug, Clone, Deserialize)]
+pub struct App {
+    pub name: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    /// regex on the window class
+    #[serde(default)]
+    pub class: String,
+    /// regex on the window title
+    #[serde(default)]
+    pub title: String,
+    /// substring of a process command line below the window's pid (tells gamescope games apart)
+    #[serde(default)]
+    pub process: String,
+    /// how to start it when it isn't open
+    #[serde(default)]
+    pub launch: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FastCommand {
+    pub say: Vec<String>,
+    pub run: String,
+    #[serde(default)]
+    pub reply: String,
+    #[serde(default)]
+    pub speak_output: bool,
+}
+
+/// Always-on listening: a keyword spotter waits for the wake word on the CPU, then Whisper hears
+/// the request.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Ears {
+    pub model_dir: String,
+    pub keywords: Vec<String>,
+    pub threshold: f32,
+    pub score: f32,
+    pub threads: i32,
+    pub record: Vec<String>,
+    pub preroll_ms: u64,
+    pub silence_ms: u64,
+    pub start_timeout_ms: u64,
+    pub max_seconds: u64,
+    pub speech_factor: f64,
+    pub wake_sound: String,
+    pub require_wake_word: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -111,6 +184,14 @@ impl Notify {
     }
 }
 
+/// `~/` and `$HOME` in a shell command line.
+pub fn expand_cmd(c: &str) -> String {
+    let h = home().display().to_string();
+    let c = c.replace("$HOME", &h).replace("${HOME}", &h);
+    let c = if let Some(r) = c.strip_prefix("~/") { format!("{h}/{r}") } else { c };
+    c.replace(" ~/", &format!(" {h}/"))
+}
+
 pub fn home() -> PathBuf {
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
 }
@@ -169,7 +250,14 @@ fn merge(base: &mut toml::Value, over: toml::Value) {
 pub fn parse(user: Option<&str>) -> Result<Config, String> {
     let mut base: toml::Value = toml::from_str(DEFAULTS).map_err(|e| format!("built-in defaults: {e}"))?;
     if let Some(text) = user {
-        let over: toml::Value = toml::from_str(text).map_err(|e| format!("{}: {e}", config_path().display()))?;
+        let mut over: toml::Value = toml::from_str(text).map_err(|e| format!("{}: {e}", config_path().display()))?;
+        // your [[commands]] come first and keep the built-in ones, unless fast.own_commands_only
+        let only = over.get("fast").and_then(|f| f.get("own_commands_only")).and_then(|v| v.as_bool()).unwrap_or(false);
+        if let (Some(toml::Value::Array(mine)), false) = (over.get("commands").cloned(), only) {
+            if let Some(toml::Value::Array(builtin)) = base.get("commands").cloned() {
+                over.as_table_mut().unwrap().insert("commands".into(), toml::Value::Array([mine, builtin].concat()));
+            }
+        }
         merge(&mut base, over);
     }
     let cfg: Config = base.try_into().map_err(|e| format!("{}: {e}", config_path().display()))?;
@@ -212,6 +300,16 @@ mod tests {
         assert_eq!(c.endpoint.url, "http://x:1");
         assert_eq!(c.endpoint.timeout, 120, "untouched keys keep defaults");
         assert_eq!(c.vote.needed, 3);
+    }
+
+    #[test]
+    fn own_commands_come_first() {
+        let base = parse(None).unwrap().commands.len();
+        let c = parse(Some("[[commands]]\nsay = [\"clip that\"]\nrun = \"clip\"\n")).unwrap();
+        assert_eq!(c.commands.len(), base + 1);
+        assert_eq!(c.commands[0].run, "clip");
+        let c = parse(Some("[fast]\nown_commands_only = true\n[[commands]]\nsay = [\"x\"]\nrun = \"y\"\n")).unwrap();
+        assert_eq!(c.commands.len(), 1);
     }
 
     #[test]

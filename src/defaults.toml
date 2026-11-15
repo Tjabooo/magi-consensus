@@ -113,3 +113,105 @@ prompt = ""                     # spelling hints for Whisper (names, jargon)
 # tts = "piper --model ~/.local/share/piper/en_US-lessac-medium.onnx --output_raw 2>/dev/null | pw-play --raw --rate 22050 --channels 1 --format s16 -"
 tts = ""
 speak_output_chars = 300        # how much command output is read aloud when the planner asks for it
+
+# ── Fast path ────────────────────────────────────────────────────────────────
+# Phrases in [[commands]] run at once: no planner, no vote (you wrote them yourself).
+# A request may chain them: "workspace 3 and fullscreen roblox". Every part must match,
+# otherwise the whole request goes to the council as usual.
+[fast]
+enabled = true
+step_delay_ms = 120             # pause between chained steps (lets focus settle)
+launch_wait_s = 15              # "open X and fullscreen it": how long to wait for X's window
+wake_words = ["magi", "maggie", "margie", "magie", "maji", "mahji", "mogi", "marji", "madgie", "magee", "hey magi", "hey maggie", "okay magi", "ok magi"]
+lead_fillers = ["hey", "okay", "ok", "yo", "please", "can you", "could you", "would you", "will you", "i want to", "i want you to", "just", "go ahead and", "lets"]
+tail_fillers = ["please", "thanks", "thank you", "for me", "now", "right now"]
+fullscreen_cmd = ""             # e.g. "my-fullscreen {address}"; empty = Hyprland's own
+done_sound = ""                 # e.g. "pw-play ~/sounds/tick.wav"
+own_commands_only = false       # true: your [[commands]] replace the built-in ones (default: they come first)
+
+# Phrase syntax: words; [a|b] optional; (a|b) one of; a_b = "a b" inside brackets;
+# slots {n} (number), {level} (number), {app} (an [[apps]] name/alias, an open window's class,
+# or it/this/that), {text} (rest, shell-quoted). Number words are digits already ("three" → 3).
+# run: a shell command ({n}, {level}, {text}, {app.address}, {app.class}, {app.title}, {app.pid},
+# {app.workspace}, {app.fullscreen}) or a built-in action:
+#   @workspace  @focus  @open  @close  @fullscreen  @unfullscreen  @move  @special NAME
+# reply = spoken after it ran; speak_output = read the command's output aloud.
+[[commands]]
+say = ["[switch|go] [to] workspace {n}", "desktop {n}"]
+run = "@workspace"
+
+[[commands]]
+say = ["(move|send|put) {app} to workspace {n}", "(move|send|put) [it|this] to workspace {n}"]
+run = "@move"
+
+[[commands]]
+say = ["(open|launch|start|run) {app}"]
+run = "@open"
+
+[[commands]]
+say = ["(focus|show|switch_to|go_to|bring_up) {app}"]
+run = "@focus"
+
+[[commands]]
+say = ["[make] {app} (fullscreen|full_screen)", "(fullscreen|full_screen) [it|this|that]", "(fullscreen|full_screen) {app}", "make [it|this|that] (fullscreen|full_screen)"]
+run = "@fullscreen"
+
+[[commands]]
+say = ["(exit|leave|unfullscreen|un_fullscreen) [fullscreen|full_screen]", "(exit|leave|unfullscreen) {app} [fullscreen|full_screen]"]
+run = "@unfullscreen"
+
+[[commands]]
+say = ["(close|quit) {app}"]
+run = "@close"
+
+[[commands]]
+say = ["(pause|play|resume) [the] [music|song|track]", "play pause"]
+run = "playerctl play-pause"
+
+[[commands]]
+say = ["(skip|next) [song|track|this_song|it]", "skip this [song|track]"]
+run = "playerctl next"
+
+[[commands]]
+say = ["(previous|last|go_back) [song|track]", "play [the] (previous|last) [song|track]"]
+run = "playerctl previous"
+
+[[commands]]
+say = ["(whats|what_is) (playing|this_song)", "what song is this"]
+run = "playerctl metadata --format '{{title}} by {{artist}}'"
+speak_output = true
+
+[[commands]]
+say = ["[set] volume [to] {level} [percent]"]
+run = "wpctl set-volume @DEFAULT_AUDIO_SINK@ {level}%"
+
+[[commands]]
+say = ["(volume_up|louder|turn_it_up)", "turn [the] volume up"]
+run = "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 10%+"
+
+[[commands]]
+say = ["(volume_down|quieter|turn_it_down)", "turn [the] volume down"]
+run = "wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%-"
+
+[[commands]]
+say = ["[what] time is it", "whats the time"]
+run = "date '+%H:%M'"
+speak_output = true
+
+# ── Always-on listening (`consensus ears run`) ───────────────────────────────
+[ears]
+# sherpa-onnx keyword-spotting model (English, BPE): encoder/decoder/joiner*.onnx, tokens.txt,
+# bpe.vocab. See README → "Wake word".
+model_dir = "~/.local/share/magi-consensus/kws"
+keywords = ["MAGI", "MAGGIE"]   # any of these wakes it; spelled like they sound
+threshold = 0.20                # lower = wakes more easily (and more often by mistake)
+score = 2.0                     # boost for keyword paths
+threads = 1
+record = ["pw-record", "--rate", "16000", "--channels", "1", "--format", "s16", "-"]
+preroll_ms = 1500               # audio before the wake word that goes to Whisper too
+silence_ms = 800                # this much quiet ends the request
+start_timeout_ms = 3000         # give up if nothing is said after the wake word
+max_seconds = 10
+speech_factor = 3.0             # louder than noise floor × this counts as speech
+wake_sound = ""                 # played when it wakes, e.g. "pw-play ~/sounds/wake.wav"
+require_wake_word = true        # Whisper must hear a wake word too (cuts false wakes)

@@ -41,3 +41,19 @@ about = "run something later"
 prompt = ""                             # names/jargon Whisper should spell right
 # Piper → PipeWire; empty = silent
 # tts = "piper --model ~/.local/share/piper/en_GB-alan-medium.onnx --output_raw 2>/dev/null | pw-play --raw --rate 22050 --channels 1 --format s16 -"
+
+# ── Fast path + wake word (0.2.0) ────────────────────────────────────────────
+# Your phrases run at once, no vote. `consensus commands` lists them with the built-in ones.
+# [ears]
+# keywords = ["MAGGIE", "MAGI"]
+# threshold = 0.15
+#
+# [[apps]]
+# name = "browser"
+# aliases = ["firefox"]
+# class = "^firefox$"
+# launch = "firefox"
+#
+# [[commands]]
+# say = ["clip [that|it]"]
+# run = "my-clip-save"
