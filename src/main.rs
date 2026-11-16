@@ -10,6 +10,7 @@ mod memory;
 mod out;
 mod ptt;
 mod rules;
+mod write;
 
 use config::Config;
 use council::Action;
@@ -31,6 +32,7 @@ USAGE
   consensus commands                            the fast phrases, as configured
   consensus check COMMAND...                    hard rules only, no models
   consensus hear FILE.wav                       transcribe only (tests the speech endpoint)
+  consensus write [--send] -- BRIEF             compose text (an essay, a reply...) and type it into the focused window; --stop ends it
   consensus log [N]                             last N decisions (default 10)
   consensus forget [all]                        clear the conversation memory (all: standing notes too)
   consensus notes                               standing notes (from now on…, remember…)
@@ -393,6 +395,9 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
         return 0;
     }
 
+    // `consensus write` reads these to write in the user's own words and language
+    std::env::set_var("CONSENSUS_REQUEST", request);
+    std::env::set_var("CONSENSUS_LANG", &o.lang);
     let res = exec::run(&cfg.run, &action.command, Duration::from_secs(cfg.run.timeout));
     let private = rules::is_private(&cfg.run.private, &action.command);
     println!("APPROVED: {yes}/{n} → exit {:?} in {} ms", res.code, res.ms);
@@ -648,6 +653,7 @@ fn main() {
                 64
             }
         },
+        "write" => write::cmd(&cfg, &rest),
         "log" => cmd_log(rest.first().and_then(|n| n.parse().ok()).unwrap_or(10)),
         "config" => {
             println!("# {}", config::config_path().display());

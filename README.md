@@ -71,10 +71,27 @@ consensus ptt start | stop | toggle | cancel           # push to talk
 consensus ask "workspace 3 and fullscreen roblox"      # your [[commands]]: runs at once, no vote
 consensus ask --vote "skip"                            # force the council even for a fast phrase
 consensus commands                                     # every fast phrase and app
+consensus write --send -- 'an essay about Overwatch'  # compose text and type it into the focused window
+consensus write --print discord -- 'a short poem'      # test the writer: print, type nothing
+consensus write --stop                                 # stop a writer that is still typing ("stop writing")
 consensus ears run                                     # always-on wake word (run it as a user service)
 consensus ears on | off | toggle | status              # pause/resume the listener
 consensus ears test sample.wav                         # where the wake word is heard (16 kHz mono)
 ```
+
+### Typing vs writing
+
+"type hello there" / "skriv hej" types exactly those words (`wtype`). "write an essay about Overwatch" /
+"skriv en uppsats om Overwatch" / "write a reply saying I can't play tonight" describes text to create:
+the planner runs `consensus write -- 'BRIEF'`, which returns at once and leaves a worker that streams
+the model's text and types it line by line into the window that was focused when you asked. The worker
+writes in the language you spoke (or the one you asked for: "på engelska"), keeps chat messages under
+Discord's 2000 characters, uses Shift+Enter for line breaks (one line in terminals and game chats),
+stops typing and puts the whole text on the clipboard if the focus moves, and presses Enter at the end
+only with `--send`. `[write] model` picks a different model for composing (`busy_model` + `busy_when`
+swap it while a game runs). Before rules and votes, typing commands are repaired: a stray `'` is
+re-quoted, `write … && wtype -k Return` becomes `--send`, and Enter is dropped when the request never
+said send.
 
 ### Fast commands
 

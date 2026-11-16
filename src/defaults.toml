@@ -96,7 +96,15 @@ opaque_patterns = ['os\.execute', 'io\.popen']
 # overwriting a file with `>` (except /dev/null) counts as destructive
 redirect_is_destructive = true
 # full-command regexes that may pass the destructive/opaque rules (they are still voted on)
-allow = []
+# typing a quoted string or composing from a quoted brief is harmless even if it says "kill" or "rm"
+allow = ["^(wtype|wl-copy) -- '([^']|'\\\\'')*'( && wtype -k Return)?$", "^consensus write( --send)? -- '([^']|'\\\\'')*'$"]
+
+[write]
+# `consensus write` (compose an essay, a reply... and type it): "" = the planner's model
+model = ""
+# while a process whose name matches busy_when runs (e.g. "^(cs2|gamescope)"), use busy_model instead
+busy_model = ""
+busy_when = ""
 
 [context]
 # run before planning; trimmed output is shown to the planner and all units
@@ -184,6 +192,11 @@ run = "@unfullscreen"
 say = ["(send|submit|post) [it|this|that|message|the_message|my_message|this_message|that_message|the_text]",
   "(hit|press|push) (enter|return|send)", "send [it|the_message] (now|off)"]
 run = "wtype -k Return"
+
+[[commands]]
+# stop a `consensus write` that is still typing (wrong window, too long)
+say = ["stop (writing|typing) [it|that|now|please]", "(sluta|stopp) (skriva|skriv) [nu]"]
+run = "consensus write --stop"
 
 [[commands]]
 say = ["(close|quit) {app}"]

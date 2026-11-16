@@ -24,6 +24,21 @@ pub struct Config {
     #[serde(default)]
     pub commands: Vec<FastCommand>,
     pub ears: Ears,
+    #[serde(default)]
+    pub write: Write,
+}
+
+/// `consensus write`: composing text from a brief.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Write {
+    /// model for composing ("" = the planner's model)
+    #[serde(default)]
+    pub model: String,
+    /// used instead of `model` while a process matching this regex runs (a game that needs the VRAM)
+    #[serde(default)]
+    pub busy_model: String,
+    #[serde(default)]
+    pub busy_when: String,
 }
 
 /// Fast path: your own phrases run at once, no model, no vote.

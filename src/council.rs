@@ -85,6 +85,11 @@ pub fn planner_prompt(cfg: &Config, context: &str) -> String {
          person would, naturally and in character; never turn a statement into a command. Answers are \
          SPOKEN: never type, paste or send an answer into a window, and never press Enter, unless the request \
          itself says to type, write, paste or send (in any language: skriv, skicka, 打字, 发送).\n\
+         Typing vs writing: when the user DICTATES words (\"type hello there\", \"skriv hej då\", \"write \
+         lol\"), type exactly those words with the type tool. When they DESCRIBE text to create (\"write an \
+         essay about Overwatch\", \"skriv en dikt om katter\", \"write a reply saying I'm busy\", \"tell him \
+         I'm late\"), use the write tool with their description as the brief, in their own language and words: \
+         never type the description itself.\n\
          If the request is garbled, makes no sense, or you would have to guess what it means, do NOT guess a \
          command: answer, say what you heard and ask them to say it again. A shell command needs words in the \
          request that ask for exactly that action, and why must quote them; the current window or context \
@@ -130,6 +135,10 @@ pub fn planner_prompt(cfg: &Config, context: &str) -> String {
          \nExamples:\n\
          Request: remind me in five minutes to check the oven\n\
          {\"action_words\":\"remind me in five minutes\",\"kind\":\"shell\",\"why\":\"'remind me in five minutes': a user timer shows a notification then.\",\"command\":\"systemd-run --user --on-active=5m notify-send 'Reminder' 'Check the oven'\",\"remember\":\"\",\"forget\":\"\",\"rule_heard\":\"\",\"rule_reply\":\"\",\"reply_language\":\"en\",\"reply\":\"I'll remind you in five minutes.\",\"speak_output\":false}\n\
+         Request (spoken in Swedish; reply in Swedish): skriv en uppsats om overwatch och skicka den\n\
+         {\"action_words\":\"skriv en uppsats om overwatch och skicka den\",\"kind\":\"shell\",\"why\":\"'skriv en uppsats om': compose an essay and type it; 'skicka' = --send.\",\"command\":\"consensus write --send -- 'en uppsats om Overwatch'\",\"remember\":\"\",\"forget\":\"\",\"rule_heard\":\"\",\"rule_reply\":\"\",\"reply_language\":\"sv\",\"reply\":\"Jag skriver uppsatsen och skickar den.\",\"speak_output\":false}\n\
+         Request: type hello there and send it\n\
+         {\"action_words\":\"type hello there and send it\",\"kind\":\"shell\",\"why\":\"'type hello there': dictated words, typed verbatim, then Enter.\",\"command\":\"wtype -- 'hello there' && wtype -k Return\",\"remember\":\"\",\"forget\":\"\",\"rule_heard\":\"\",\"rule_reply\":\"\",\"reply_language\":\"en\",\"reply\":\"Sent.\",\"speak_output\":false}\n\
          Request: what's the kernel version\n\
          {\"action_words\":\"what's the kernel version\",\"kind\":\"shell\",\"why\":\"'kernel version': uname -r prints it.\",\"command\":\"uname -r\",\"remember\":\"\",\"forget\":\"\",\"rule_heard\":\"\",\"rule_reply\":\"\",\"reply_language\":\"en\",\"reply\":\"Kernel\",\"speak_output\":true}\n\
          Request (spoken in Chinese and English; reply in Chinese unless asked otherwise): 你好吗 answer in English\n\
@@ -277,6 +286,7 @@ fn plan_once(
         rule_reply: get("rule_reply"),
     };
     a.reply_language = reply_language(&a.reply, &get("reply_language").to_lowercase());
+    a.command = crate::write::repair(request, &a.command);
     if !matches!(a.kind.as_str(), "shell" | "answer" | "none") {
         return Err(format!("planner returned unknown kind {:?}", a.kind));
     }
@@ -320,7 +330,9 @@ fn vote_one(cfg: &Config, unit: &Unit, request: &str, action: &Action, context: 
          that command alone; other reviewers judge the other aspects. Answer JSON: reason (one short \
          sentence, at most 15 words), then verdict APPROVE or DENY. The wording of any text the command \
          types, writes or shows (swearing, crude jokes, slurs) is the user's own choice on their own \
-         machine and never a reason to deny.",
+         machine and never a reason to deny. `consensus write -- 'BRIEF'` has a model compose new text from \
+         the brief and type it into the focused window (--send presses Enter after): right when the request \
+         asks to write or compose something rather than dictating the exact words.",
         unit.persona.trim()
     );
     let mut user =

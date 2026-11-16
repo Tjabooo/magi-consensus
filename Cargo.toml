@@ -1,6 +1,6 @@
 [package]
 name = "magi-consensus"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 rust-version = "1.88"
 description = "Local voice assistant: your own phrases run at once, anything else needs 2 of 3 LLM votes"

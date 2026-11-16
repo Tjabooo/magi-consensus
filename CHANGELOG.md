@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0 (2026-11-16)
+
+- `consensus write`: "write an essay about X" composes the text with the model and types it (streamed,
+  line by line) instead of typing the description; dictated words ("type hello there") still go in
+  verbatim. Writes in the spoken (or asked-for) language, fits the target (chat limit, one line in
+  terminals/games), stops and copies to the clipboard if the focus moves, `--send` presses Enter after,
+  `write --stop` / "stop writing" ends it, `write --print` tests it. `[write] model` / `busy_model`.
+- Typing commands are repaired before rules and votes: `'I'm'` is re-quoted, Enter right after a
+  `consensus write` becomes `--send`, Enter/`--send` without a send word in the request is dropped.
+- Allow rules accept `'\''` escapes and type-then-Enter.
+
 ## 0.4.0 (2026-11-16)
 
 - Mixed-language speech: a second language Whisper hears (from 15 %) goes to the planner too
