@@ -140,6 +140,7 @@ pub fn cmd(cfg: &Config, args: &[String]) -> i32 {
     let mut worker = false;
     let mut print: Option<String> = None;
     let mut window = String::new();
+    let mut to = String::new();
     let mut brief: Vec<String> = Vec::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -151,6 +152,7 @@ pub fn cmd(cfg: &Config, args: &[String]) -> i32 {
             "--worker" => worker = true,
             "--print" => print = Some(it.next().cloned().unwrap_or_else(|| "discord".into())),
             "--window" => window = it.next().cloned().unwrap_or_default(),
+            "--to" => to = it.next().cloned().unwrap_or_default(),
             "--stop" => {
                 let stopped = stop_running();
                 println!("{}", if stopped { "stopped writing" } else { "nothing is being written" });
@@ -166,7 +168,7 @@ pub fn cmd(cfg: &Config, args: &[String]) -> i32 {
     }
     let brief = brief.join(" ").trim().to_string();
     if brief.is_empty() {
-        eprintln!("usage: consensus write [--send] -- BRIEF   (e.g. 'an essay about Overwatch')\n       consensus write --stop\n       consensus write --print [CLASS] -- BRIEF   (test: print, type nothing; CLASS picks the shape, default discord)");
+        eprintln!("usage: consensus write [--send] [--to NAME] -- BRIEF   (e.g. 'an essay about Overwatch'; --to opens NAME's chat in Discord first)\n       consensus write --stop\n       consensus write --print [CLASS] -- BRIEF   (test: print, type nothing; CLASS picks the shape, default discord)");
         return 64;
     }
     if let Some(class) = print {
@@ -176,10 +178,22 @@ pub fn cmd(cfg: &Config, args: &[String]) -> i32 {
     if worker {
         return run_worker(cfg, &brief, active_window().filter(|w| w.address == window), send);
     }
+    if !to.trim().is_empty() {
+        if let Err(e) = open_chat(to.trim()) {
+            eprintln!("{e}");
+            return 1;
+        }
+    }
     let Some(w) = active_window() else {
         eprintln!("no focused window to type into");
         return 1;
     };
+    if is_dictation(&brief) {
+        // the words themselves ("hej på dig", "lol"): typed as said, the model would only embellish them
+        let ok = wtype_text(&brief) && (!send || wtype_args(&["-k", "Return"]));
+        println!("typed {:?} into {}{}", brief, w.class, if send { " and sent" } else { "" });
+        return if ok { 0 } else { 1 };
+    }
     stop_running(); // one writer at a time
     let exe = match std::env::current_exe() {
         Ok(e) => e,
@@ -225,6 +239,42 @@ fn wtype_text(text: &str) -> bool {
         let _ = si.write_all(text.as_bytes());
     }
     child.wait().is_ok_and(|s| s.success())
+}
+
+fn pause(ms: u64) {
+    std::thread::sleep(Duration::from_millis(ms));
+}
+
+/// `--to NAME`: focus the chat app (Discord & co.) and open NAME's DM or channel with the quick
+/// switcher (Ctrl+K, type, Enter). Checked by the window title, which follows the open channel: if it
+/// didn't change (and doesn't name them already), the switcher is closed again and nothing is typed.
+fn open_chat(name: &str) -> Result<(), String> {
+    let out = Command::new("hyprctl").args(["clients", "-j"]).output().map_err(|e| format!("hyprctl: {e}"))?;
+    let clients: Vec<Value> = serde_json::from_slice(&out.stdout).unwrap_or_default();
+    let class_of = |c: &Value| c.get("class").and_then(Value::as_str).unwrap_or("").to_string();
+    let chat =
+        clients.iter().find(|c| Shape::of(&class_of(c)) == Shape::Chat).ok_or("no chat app (Discord) is open")?;
+    let class = class_of(chat);
+    let focus = format!("hl.dsp.focus({{ window = \"class:^{}$\" }})", regex::escape(&class));
+    Command::new("hyprctl").args(["dispatch", &focus]).stdout(Stdio::null()).status().map_err(|e| e.to_string())?;
+    pause(300);
+    let before = active_window().filter(|w| w.class == class).ok_or(format!("couldn't focus {class}"))?;
+    let squash = |s: &str| s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect::<String>();
+    if squash(&before.title).contains(&squash(name)) {
+        return Ok(()); // already there
+    }
+    wtype_args(&["-M", "ctrl", "-k", "k", "-m", "ctrl"]);
+    pause(450);
+    wtype_text(name);
+    pause(1000);
+    wtype_args(&["-k", "Return"]);
+    pause(800);
+    let after = active_window().unwrap_or_default();
+    if after.address == before.address && after.title != before.title {
+        return Ok(());
+    }
+    wtype_args(&["-k", "Escape"]); // switcher still open: close it, type nothing
+    Err(format!("couldn't find \"{name}\" in {class}"))
 }
 
 fn wtype_args(args: &[&str]) -> bool {
@@ -577,6 +627,91 @@ fn asked_language(request: &str) -> Option<&'static str> {
         .map(|(_, name)| name)
 }
 
+/// Words that say a brief DESCRIBES text (a kind of text, or what it is about) instead of being it.
+const DESCRIBING: &[&str] = &[
+    "essay",
+    "poem",
+    "story",
+    "message",
+    "reply",
+    "answer",
+    "joke",
+    "text",
+    "letter",
+    "summary",
+    "roast",
+    "song",
+    "rap",
+    "speech",
+    "email",
+    "mail",
+    "post",
+    "review",
+    "list",
+    "paragraph",
+    "sentence",
+    "words",
+    "something",
+    "anything",
+    "about",
+    "saying",
+    "says",
+    "that",
+    "telling",
+    "explaining",
+    "why",
+    "how",
+    "uppsats",
+    "dikt",
+    "berättelse",
+    "historia",
+    "meddelande",
+    "svar",
+    "skämt",
+    "brev",
+    "sammanfattning",
+    "låt",
+    "tal",
+    "något",
+    "någonting",
+    "om",
+    "att",
+    "säger",
+    "varför",
+    "hur",
+    "诗",
+    "文章",
+    "故事",
+    "消息",
+    "回复",
+    "笑话",
+    "信",
+    "关于",
+    "说",
+    "作文",
+    "总结",
+];
+
+/// A brief that is just the words to type ("hej på dig", "lol", "gg ez"): no word says what kind of
+/// text it is or what it is about.
+fn is_dictation(brief: &str) -> bool {
+    let low = brief.to_lowercase();
+    let cjk = low.chars().any(|c| matches!(c as u32, 0x4e00..=0x9fff));
+    let words: Vec<String> = low
+        .split(|c: char| !c.is_alphanumeric() && c != '\'')
+        .filter(|w| !w.is_empty())
+        .map(|w| w.trim_matches('\'').to_string())
+        .collect();
+    let describes = DESCRIBING.iter().any(|d| {
+        if d.chars().any(|c| c as u32 >= 0x4e00) {
+            low.contains(d)
+        } else {
+            words.iter().any(|w| w == d || (d.len() > 4 && w.starts_with(d)))
+        }
+    });
+    !describes && !cjk && words.len() <= 12
+}
+
 /// Words that ask to send / press Enter, in the languages the assistant hears.
 const SEND_WORDS: &[&str] = &["send", "skicka", "sänd", "post", "submit", "enter", "return", "发送", "发出去"];
 
@@ -589,7 +724,7 @@ pub fn repair(request: &str, command: &str) -> String {
     static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
     let re = RE.get_or_init(|| {
         Regex::new(
-            r"^(?P<head>(?:~/\.local/bin/)?consensus write(?: --send)? -- |wtype -- |wl-copy -- )'(?P<body>.*)'(?P<tail>(?: && wtype -k Return)?)$",
+            r"^(?P<head>(?:~/\.local/bin/)?consensus write(?: --send| --to '(?:[^']|'\\'')*')* -- |wtype -- |wl-copy -- )'(?P<body>.*)'(?P<tail>(?: && wtype -k Return)?)$",
         )
         .unwrap()
     });
@@ -672,6 +807,13 @@ mod tests {
             repair("skriv hej och skicka", "wtype -- 'hej' && wtype -k Return"),
             "wtype -- 'hej' && wtype -k Return"
         );
+        assert_eq!(
+            repair(
+                "skriv till 25 man och skicka en uppsats",
+                "consensus write --to '25 man' -- 'en uppsats' && wtype -k Return"
+            ),
+            "consensus write --send --to '25 man' -- 'en uppsats'"
+        );
         let two = "wtype -- 'a' && wtype -k Return && wtype -- 'b'";
         assert_eq!(repair("type a send type b", two), two);
         assert_eq!(repair("volume up", "wpctl set-volume @DEFAULT_SINK@ 5%+"), "wpctl set-volume @DEFAULT_SINK@ 5%+");
@@ -683,6 +825,25 @@ mod tests {
         assert_eq!(asked_language("用英文写一首诗"), Some("English"));
         assert_eq!(asked_language("write a poem in Swedish"), Some("Swedish"));
         assert_eq!(asked_language("write a poem about cats"), None);
+    }
+
+    #[test]
+    fn dictation_vs_description() {
+        for b in ["hej på dig", "lol", "gg ez", "I'm on my way", "hello there"] {
+            assert!(is_dictation(b), "{b}");
+        }
+        for b in [
+            "en uppsats om spermier",
+            "a poem about cats",
+            "that I'm late",
+            "a roast of my friend Ebi",
+            "ett meddelande till mamma",
+            "something funny",
+            "一首关于猫的诗",
+            "essays on war",
+        ] {
+            assert!(!is_dictation(b), "{b}");
+        }
     }
 
     #[test]

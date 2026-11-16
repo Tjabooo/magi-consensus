@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.1 (2026-11-16)
+
+- Ears: Whisper's other spellings of the name ("Maggi", "Maggy", "Megi": one edit from magi/maggi/maggie,
+  not real words like "magic") count as the wake word. "Maggi, …" requests were thrown away as false wakes.
+- Transcripts are joined from Whisper's segments, which can split a word ("sk\nicka" → "skicka").
+- `consensus write --to NAME` opens NAME's DM or channel in Discord (Ctrl+K switcher, checked by the
+  window title; nothing is typed if it didn't open).
+- A brief that is just the words ("hej på dig", "lol") is typed as said instead of being embellished.
+
 ## 0.5.0 (2026-11-16)
 
 - `consensus write`: "write an essay about X" composes the text with the model and types it (streamed,

@@ -116,7 +116,7 @@ pub fn transcribe(
 }
 
 fn heard_from(v: &Value, language: &str) -> Heard {
-    let text = v.get("text").and_then(Value::as_str).unwrap_or("").trim().to_string();
+    let text = joined_text(v);
     let mut langs = detected_all(v);
     let lang = if !language.is_empty() { language.to_string() } else { langs.first().cloned().unwrap_or_default() };
     langs.retain(|l| *l != lang);
@@ -125,6 +125,20 @@ fn heard_from(v: &Value, language: &str) -> Heard {
     }
     langs.truncate(2);
     Heard { text, lang, langs }
+}
+
+/// The transcript. whisper.cpp's `text` puts a newline between segments, and a segment can end
+/// mid-word ("sk\nicka" for "skicka"); the segments themselves carry their leading spaces, so
+/// joining them as they are gives the right words. Without segments: `text`, newlines → spaces.
+fn joined_text(v: &Value) -> String {
+    if let Some(segs) = v.get("segments").and_then(Value::as_array).filter(|s| !s.is_empty()) {
+        let t: String = segs.iter().filter_map(|s| s.get("text").and_then(Value::as_str)).collect();
+        if !t.trim().is_empty() {
+            return t.split_whitespace().collect::<Vec<_>>().join(" ");
+        }
+    }
+    let t = v.get("text").and_then(Value::as_str).unwrap_or("");
+    t.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Languages of a verbose_json reply, most likely first: the top one, plus a second one when it is
@@ -201,6 +215,14 @@ fn transcribe_once(ep: &Endpoint, wav: &[u8], language: &str, prompt: &str) -> R
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn segments_join_without_splitting_words() {
+        let v = serde_json::json!({"text": "Maggi, skriv och sk\nicka.", "segments": [{"text": " Maggi, skriv och sk"}, {"text": "icka."}]});
+        assert_eq!(super::joined_text(&v), "Maggi, skriv och skicka.");
+        let v = serde_json::json!({"text": "one\ntwo"});
+        assert_eq!(super::joined_text(&v), "one two");
+    }
+
     use super::*;
 
     #[test]

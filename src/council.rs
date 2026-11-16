@@ -89,7 +89,9 @@ pub fn planner_prompt(cfg: &Config, context: &str) -> String {
          lol\"), type exactly those words with the type tool. When they DESCRIBE text to create (\"write an \
          essay about Overwatch\", \"skriv en dikt om katter\", \"write a reply saying I'm busy\", \"tell him \
          I'm late\"), use the write tool with their description as the brief, in their own language and words: \
-         never type the description itself.\n\
+         never type the description itself. Writing to someone in a chat app (\"skriv till Anna\", \"message \
+         ebi\"): add --to 'NAME' to the write command; it opens their chat itself, so no other command \
+         goes before it.\n\
          If the request is garbled, makes no sense, or you would have to guess what it means, do NOT guess a \
          command: answer, say what you heard and ask them to say it again. A shell command needs words in the \
          request that ask for exactly that action, and why must quote them; the current window or context \
@@ -137,6 +139,8 @@ pub fn planner_prompt(cfg: &Config, context: &str) -> String {
          {\"action_words\":\"remind me in five minutes\",\"kind\":\"shell\",\"why\":\"'remind me in five minutes': a user timer shows a notification then.\",\"command\":\"systemd-run --user --on-active=5m notify-send 'Reminder' 'Check the oven'\",\"remember\":\"\",\"forget\":\"\",\"rule_heard\":\"\",\"rule_reply\":\"\",\"reply_language\":\"en\",\"reply\":\"I'll remind you in five minutes.\",\"speak_output\":false}\n\
          Request (spoken in Swedish; reply in Swedish): skriv en uppsats om overwatch och skicka den\n\
          {\"action_words\":\"skriv en uppsats om overwatch och skicka den\",\"kind\":\"shell\",\"why\":\"'skriv en uppsats om': compose an essay and type it; 'skicka' = --send.\",\"command\":\"consensus write --send -- 'en uppsats om Overwatch'\",\"remember\":\"\",\"forget\":\"\",\"rule_heard\":\"\",\"rule_reply\":\"\",\"reply_language\":\"sv\",\"reply\":\"Jag skriver uppsatsen och skickar den.\",\"speak_output\":false}\n\
+         Request (spoken in Swedish; reply in Swedish): öppna discord och skriv till Anna en dikt om katter och skicka\n\
+         {\"action_words\":\"skriv till Anna en dikt om katter och skicka\",\"kind\":\"shell\",\"why\":\"'skriv till Anna': write --to opens her chat; 'skicka' = --send.\",\"command\":\"consensus write --send --to 'Anna' -- 'en dikt om katter'\",\"remember\":\"\",\"forget\":\"\",\"rule_heard\":\"\",\"rule_reply\":\"\",\"reply_language\":\"sv\",\"reply\":\"Jag skriver en dikt till Anna och skickar den.\",\"speak_output\":false}\n\
          Request: type hello there and send it\n\
          {\"action_words\":\"type hello there and send it\",\"kind\":\"shell\",\"why\":\"'type hello there': dictated words, typed verbatim, then Enter.\",\"command\":\"wtype -- 'hello there' && wtype -k Return\",\"remember\":\"\",\"forget\":\"\",\"rule_heard\":\"\",\"rule_reply\":\"\",\"reply_language\":\"en\",\"reply\":\"Sent.\",\"speak_output\":false}\n\
          Request: what's the kernel version\n\
@@ -332,7 +336,8 @@ fn vote_one(cfg: &Config, unit: &Unit, request: &str, action: &Action, context: 
          types, writes or shows (swearing, crude jokes, slurs) is the user's own choice on their own \
          machine and never a reason to deny. `consensus write -- 'BRIEF'` has a model compose new text from \
          the brief and type it into the focused window (--send presses Enter after): right when the request \
-         asks to write or compose something rather than dictating the exact words.",
+         asks to write or compose something rather than dictating the exact words; --to 'NAME' opens that \
+         person's chat in Discord first.",
         unit.persona.trim()
     );
     let mut user =

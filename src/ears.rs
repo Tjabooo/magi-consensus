@@ -306,8 +306,36 @@ pub fn after_wake(cfg: &Config, transcript: &str) -> Option<String> {
     let norm = crate::fast::normalize(transcript);
     let words: Vec<&str> = norm.split_whitespace().filter(|w| *w != ",").collect();
     let singles: Vec<String> = cfg.fast.wake_words.iter().filter(|w| !w.contains(' ')).cloned().collect();
-    let pos = words.iter().take(6).position(|w| singles.iter().any(|s| s == w))?;
+    let pos = words.iter().take(6).position(|w| singles.iter().any(|s| s == w) || sounds_like_magi(w))?;
     Some(words[pos + 1..].join(" "))
+}
+
+/// Real words one letter away from "magi" that must not count as the wake word.
+const NOT_MAGI: &[&str] = &["magic", "mage", "mags", "maki", "mari", "mali", "mani", "major", "maybe", "mail", "main"];
+
+/// Whisper spells the name many ways ("Maggi" in Swedish, "Maggy", "Megi"): one edit from magi,
+/// maggi or maggie counts, except real words like "magic". The keyword spotter already fired, so
+/// this only has to tell the name from ordinary speech.
+fn sounds_like_magi(word: &str) -> bool {
+    let w = word.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase();
+    let w = w.strip_suffix("'s").unwrap_or(&w);
+    if w.chars().count() < 4 || NOT_MAGI.contains(&w) {
+        return false;
+    }
+    ["magi", "maggi", "maggie"].iter().any(|m| edit_distance(w, m) <= 1)
+}
+
+fn edit_distance(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.chars().enumerate() {
+        let mut cur = vec![i + 1];
+        for (j, cb) in b.iter().enumerate() {
+            cur.push((prev[j] + usize::from(ca != *cb)).min(prev[j + 1] + 1).min(cur[j] + 1));
+        }
+        prev = cur;
+    }
+    prev[b.len()]
 }
 
 fn sh_bg(cmd: &str) {
@@ -556,6 +584,16 @@ fn understand(cfg: &Config, pcm: &[i16], handle: &dyn Fn(&str, &str)) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn whisper_spellings_of_magi() {
+        for w in ["Maggi,", "maggy", "Megi", "MAGI", "maggie's", "Magie"] {
+            assert!(super::sounds_like_magi(w), "{w}");
+        }
+        for w in ["magic", "maybe", "major", "mags", "hej", "Mamma"] {
+            assert!(!super::sounds_like_magi(w), "{w}");
+        }
+    }
+
     use super::*;
 
     #[test]

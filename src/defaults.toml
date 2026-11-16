@@ -97,7 +97,7 @@ opaque_patterns = ['os\.execute', 'io\.popen']
 redirect_is_destructive = true
 # full-command regexes that may pass the destructive/opaque rules (they are still voted on)
 # typing a quoted string or composing from a quoted brief is harmless even if it says "kill" or "rm"
-allow = ["^(wtype|wl-copy) -- '([^']|'\\\\'')*'( && wtype -k Return)?$", "^consensus write( --send)? -- '([^']|'\\\\'')*'$"]
+allow = ["^(wtype|wl-copy) -- '([^']|'\\\\'')*'( && wtype -k Return)?$", "^consensus write( --send| --to '([^']|'\\\\'')*')* -- '([^']|'\\\\'')*'$"]
 
 [write]
 # `consensus write` (compose an essay, a reply... and type it): "" = the planner's model
