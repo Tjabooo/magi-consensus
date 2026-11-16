@@ -105,6 +105,9 @@ pub struct Ears {
     pub speech_factor: f64,
     pub wake_sound: String,
     pub require_wake_word: bool,
+    /// keep listening while busy: the wake word cuts off what MAGI is saying or doing
+    #[serde(default = "barge_in_default")]
+    pub barge_in: bool,
     /// false: wake-word requests that aren't your own phrases run the planner's command after the
     /// hard rules, without a council vote (push to talk and `ask` still vote)
     #[serde(default)]
@@ -317,6 +320,10 @@ pub fn load() -> Result<Config, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => parse(None),
         Err(e) => Err(format!("{}: {e}", path.display())),
     }
+}
+
+fn barge_in_default() -> bool {
+    true
 }
 
 #[cfg(test)]

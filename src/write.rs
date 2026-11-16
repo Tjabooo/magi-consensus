@@ -124,7 +124,7 @@ fn pid_file() -> PathBuf {
 }
 
 /// Ends a running worker (its whole process group). True if one was running.
-fn stop_running() -> bool {
+pub fn stop_running() -> bool {
     let Ok(pid) = std::fs::read_to_string(pid_file()) else { return false };
     let _ = std::fs::remove_file(pid_file());
     let pid = pid.trim();

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 (2026-11-16)
+
+- Barge-in: the wake word keeps being listened for while MAGI is busy. Saying it again cuts her voice off
+  at once and drops what she was doing (a request still transcribing or planning never runs its command
+  or speaks); then she listens for the new request. "MAGI" alone or "MAGI, stop / never mind / tyst /
+  glöm det / 算了" just silences her (and stops a writer still typing). `ears.barge_in` (default on).
+- The talk key (`ptt start`) interrupts too, and `consensus hush` does it from a script or keybind.
+- Voices run in their own process group (`tts.pid`), so the whole TTS pipeline stops at once.
+
 ## 0.5.1 (2026-11-16)
 
 - Ears: Whisper's other spellings of the name ("Maggi", "Maggy", "Megi": one edit from magi/maggi/maggie,

@@ -9,7 +9,7 @@ use std::collections::{HashMap, VecDeque};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -394,7 +394,8 @@ pub fn run(cfg: &Config, handle: impl Fn(&str, &str) + Send + Sync + 'static) ->
     eprintln!("ears: listening for {:?} (threshold {}, {})", cfg.ears.keywords, cfg.ears.threshold, cfg.ears.model_dir);
 
     let handle = Arc::new(handle);
-    let busy = Arc::new(AtomicBool::new(false));
+    // requests being handled right now (transcribing, planning, running, speaking)
+    let busy = Arc::new(AtomicUsize::new(0));
     let preroll = (cfg.ears.preroll_ms as usize * RATE / 1000).max(CHUNK);
     let mut ring: VecDeque<i16> = VecDeque::with_capacity(preroll + CHUNK);
     // noise floor: slow average of quiet 30 ms frames
@@ -474,7 +475,8 @@ pub fn run(cfg: &Config, handle: impl Fn(&str, &str) + Send + Sync + 'static) ->
                 while ring.len() > preroll {
                     ring.pop_front();
                 }
-                if was_paused || busy.load(Ordering::Relaxed) {
+                // barge-in: keep listening while busy, so the wake word can cut MAGI off
+                if was_paused || (!cfg.ears.barge_in && busy.load(Ordering::Relaxed) > 0) {
                     State::Idle
                 } else {
                     stream.accept_waveform(RATE as i32, &f32s(&pcm));
@@ -488,7 +490,15 @@ pub fn run(cfg: &Config, handle: impl Fn(&str, &str) + Send + Sync + 'static) ->
                     }
                     match woke {
                         Some(w) => {
-                            eprintln!("ears: wake ({w})");
+                            if busy.load(Ordering::Relaxed) > 0 {
+                                let cut = crate::hush::interrupt();
+                                eprintln!(
+                                    "ears: wake ({w}) while busy: interrupted{}",
+                                    if cut { ", voice cut off" } else { "" }
+                                );
+                            } else {
+                                eprintln!("ears: wake ({w})");
+                            }
                             if let Some(b) = burst.as_mut() {
                                 b.2 = true;
                             }
@@ -528,11 +538,11 @@ pub fn run(cfg: &Config, handle: impl Fn(&str, &str) + Send + Sync + 'static) ->
                     // a fresh stream: the old one still holds the wake word's state
                     stream = k.create_stream();
                     ring.clear();
-                    busy.store(true, Ordering::Relaxed);
+                    busy.fetch_add(1, Ordering::Relaxed);
                     let (cfg2, h, b) = (cfg.clone(), handle.clone(), busy.clone());
                     std::thread::spawn(move || {
                         understand(&cfg2, &rec, &*h);
-                        b.store(false, Ordering::Relaxed);
+                        b.fetch_sub(1, Ordering::Relaxed);
                     });
                     State::Idle
                 }
@@ -546,6 +556,7 @@ pub fn run(cfg: &Config, handle: impl Fn(&str, &str) + Send + Sync + 'static) ->
 
 fn understand(cfg: &Config, pcm: &[i16], handle: &dyn Fn(&str, &str)) {
     let t0 = Instant::now();
+    let started = crate::hush::now();
     let heard = match llm::transcribe(
         &cfg.endpoint,
         &wav(pcm),
@@ -563,6 +574,10 @@ fn understand(cfg: &Config, pcm: &[i16], handle: &dyn Fn(&str, &str)) {
     let text = heard.text;
     let langs = heard.langs.join(",");
     eprintln!("ears: heard {:?} [{langs}] ({} ms)", text.trim(), t0.elapsed().as_millis());
+    if crate::hush::interrupted_since(started) {
+        eprintln!("ears: interrupted, dropped"); // the card belongs to the next request now
+        return;
+    }
     let request = if cfg.ears.require_wake_word {
         match after_wake(cfg, &text) {
             Some(r) => r,
@@ -575,7 +590,11 @@ fn understand(cfg: &Config, pcm: &[i16], handle: &dyn Fn(&str, &str)) {
     } else {
         text.trim().to_string()
     };
-    if request.trim().is_empty() {
+    if request.trim().is_empty() || crate::hush::is_hush(&request) {
+        // "MAGI" alone or "MAGI, stop": the wake word already cut her off; also stop a writer still typing
+        if crate::write::stop_running() {
+            eprintln!("ears: hush, stopped the writer");
+        }
         out::close_card(cfg);
         return;
     }

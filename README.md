@@ -74,6 +74,7 @@ consensus commands                                     # every fast phrase and a
 consensus write --send -- 'an essay about Overwatch'  # compose text and type it into the focused window
 consensus write --print discord -- 'a short poem'      # test the writer: print, type nothing
 consensus write --stop                                 # stop a writer that is still typing ("stop writing")
+consensus hush                                         # cut MAGI off (also: say "MAGI" while she talks)
 consensus ears run                                     # always-on wake word (run it as a user service)
 consensus ears on | off | toggle | status              # pause/resume the listener
 consensus ears test sample.wav                         # where the wake word is heard (16 kHz mono)

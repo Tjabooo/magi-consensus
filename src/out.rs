@@ -4,6 +4,7 @@ use crate::config::{self, Config, Notify};
 use crate::council::Ballot;
 use serde_json::Value;
 use std::io::Write;
+use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 
 const TAG: &str = "magi-consensus";
@@ -126,14 +127,25 @@ pub fn speak_in(cfg: &Config, text: &str, lang: &str) {
     if tts.trim().is_empty() || text.is_empty() {
         return;
     }
-    let child =
-        Command::new("sh").args(["-c", tts]).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped()).spawn();
+    // own process group, recorded so saying the wake word can kill the whole voice pipeline at once
+    let child = Command::new("sh")
+        .args(["-c", tts])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .process_group(0)
+        .spawn();
     match child {
         Ok(mut ch) => {
+            let pgid = ch.id();
+            crate::hush::speaking(pgid);
             if let Some(mut i) = ch.stdin.take() {
                 let _ = writeln!(i, "{text}");
             }
-            match ch.wait_with_output() {
+            let res = ch.wait_with_output();
+            crate::hush::done_speaking(pgid);
+            match res {
+                Ok(o) if o.status.code().is_none() => {} // cut off (interrupted)
                 Ok(o) if !o.status.success() => {
                     eprintln!("tts failed: {}", String::from_utf8_lossy(&o.stderr).trim());
                 }

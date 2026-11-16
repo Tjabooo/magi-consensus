@@ -55,6 +55,7 @@ pub fn claim() -> Option<u32> {
 }
 
 pub fn start(cfg: &Config) -> Result<(), String> {
+    crate::hush::interrupt(); // the talk key cuts off whatever MAGI is still saying or doing
     let (meta, wav) = paths();
     std::fs::create_dir_all(meta.parent().unwrap()).map_err(|e| e.to_string())?;
     let _ = std::fs::remove_file(&wav);

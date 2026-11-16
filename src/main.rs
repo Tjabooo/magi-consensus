@@ -5,6 +5,7 @@ mod council;
 mod ears;
 mod exec;
 mod fast;
+mod hush;
 mod llm;
 mod memory;
 mod out;
@@ -33,6 +34,7 @@ USAGE
   consensus check COMMAND...                    hard rules only, no models
   consensus hear FILE.wav                       transcribe only (tests the speech endpoint)
   consensus write [--send] -- BRIEF             compose text (an essay, a reply...) and type it into the focused window; --stop ends it
+  consensus hush                                cut MAGI off: stop her voice, drop what she is doing, stop a writer
   consensus log [N]                             last N decisions (default 10)
   consensus forget [all]                        clear the conversation memory (all: standing notes too)
   consensus notes                               standing notes (from now on…, remember…)
@@ -249,8 +251,11 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
     let f = Fmt(&cfg.notify);
     let t0 = Instant::now();
     let mut record = json!({"t": now_ms(), "source": o.source, "request": request, "dry_run": o.dry_run});
+    // a newer "MAGI" (or the talk key) after this point cuts this request off: no command, no voice
+    let started = hush::now();
+    let cut_off = || hush::interrupted_since(started);
     let say_in = |text: &str, lang: &str| {
-        if !o.quiet {
+        if !o.quiet && !cut_off() {
             out::speak_in(cfg, text, lang);
         }
     };
@@ -280,6 +285,13 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
     };
     record["action"] = json!(action);
     println!("request : {request}");
+    if cut_off() {
+        println!("INTERRUPTED: a newer request came in while planning");
+        record["result"] = json!("interrupted");
+        record["ms"] = json!(t0.elapsed().as_millis());
+        out::log(&record);
+        return 4;
+    }
     let noted = if o.dry_run {
         vec![]
     } else {
@@ -398,6 +410,13 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
     // `consensus write` reads these to write in the user's own words and language
     std::env::set_var("CONSENSUS_REQUEST", request);
     std::env::set_var("CONSENSUS_LANG", &o.lang);
+    if cut_off() {
+        println!("INTERRUPTED: not run");
+        record["result"] = json!("interrupted");
+        record["ms"] = json!(t0.elapsed().as_millis());
+        out::log(&record);
+        return 4;
+    }
     let res = exec::run(&cfg.run, &action.command, Duration::from_secs(cfg.run.timeout));
     let private = rules::is_private(&cfg.run.private, &action.command);
     println!("APPROVED: {yes}/{n} → exit {:?} in {} ms", res.code, res.ms);
@@ -654,6 +673,20 @@ fn main() {
             }
         },
         "write" => write::cmd(&cfg, &rest),
+        "hush" => {
+            let voice = hush::interrupt();
+            let writer = write::stop_running();
+            println!(
+                "{}",
+                match (voice, writer) {
+                    (false, false) => "interrupted (nothing was speaking or typing)",
+                    (true, false) => "interrupted: voice cut off",
+                    (false, true) => "interrupted: writer stopped",
+                    (true, true) => "interrupted: voice cut off, writer stopped",
+                }
+            );
+            0
+        }
         "log" => cmd_log(rest.first().and_then(|n| n.parse().ok()).unwrap_or(10)),
         "config" => {
             println!("# {}", config::config_path().display());
