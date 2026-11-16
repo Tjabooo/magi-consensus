@@ -77,7 +77,12 @@ pub fn chat_json(
 pub struct Heard {
     pub text: String,
     pub lang: String,
+    /// every language heard, most likely first (a second one counts from 15 %: mixed speech)
+    pub langs: Vec<String>,
 }
+
+/// A second language at least this likely means the speech mixed two languages.
+const SECOND_LANGUAGE: f64 = 0.15;
 
 /// Transcribe a WAV. `language` empty = auto-detect; a detected language that is a key of `remap`
 /// is transcribed again as the value (Swedish heard as Danish/Norwegian → "sv").
@@ -94,16 +99,53 @@ pub fn transcribe(
         if let Some(to) = remap.get(&heard.lang).filter(|to| !to.is_empty() && **to != heard.lang) {
             eprintln!("heard {:?} as {}, transcribing again as {to}", heard.text, heard.lang);
             let v = transcribe_once(ep, wav, to, prompt)?;
-            heard = heard_from(&v, to);
+            let mut again = heard_from(&v, to);
+            again.langs = heard.langs.clone();
+            heard = again;
         }
+        // the remap applies to every language heard ("da,en" → "sv,en")
+        let mut langs: Vec<String> = Vec::new();
+        for l in heard.langs.iter().map(|l| remap.get(l).filter(|t| !t.is_empty()).unwrap_or(l)) {
+            if !langs.contains(l) {
+                langs.push(l.clone());
+            }
+        }
+        heard.langs = langs;
     }
     Ok(heard)
 }
 
 fn heard_from(v: &Value, language: &str) -> Heard {
     let text = v.get("text").and_then(Value::as_str).unwrap_or("").trim().to_string();
-    let lang = if !language.is_empty() { language.to_string() } else { detected(v) };
-    Heard { text, lang }
+    let mut langs = detected_all(v);
+    let lang = if !language.is_empty() { language.to_string() } else { langs.first().cloned().unwrap_or_default() };
+    langs.retain(|l| *l != lang);
+    if !lang.is_empty() {
+        langs.insert(0, lang.clone());
+    }
+    langs.truncate(2);
+    Heard { text, lang, langs }
+}
+
+/// Languages of a verbose_json reply, most likely first: the top one, plus a second one when it is
+/// at least SECOND_LANGUAGE likely (whisper.cpp: language_probabilities).
+fn detected_all(v: &Value) -> Vec<String> {
+    if let Some(p) = v.get("language_probabilities").and_then(Value::as_object) {
+        let mut ps: Vec<(&String, f64)> = p.iter().filter_map(|(k, x)| x.as_f64().map(|x| (k, x))).collect();
+        ps.sort_by(|a, b| b.1.total_cmp(&a.1));
+        return ps
+            .iter()
+            .enumerate()
+            .filter(|(i, (_, x))| *i == 0 || (*i == 1 && *x >= SECOND_LANGUAGE))
+            .map(|(_, (k, _))| (*k).clone())
+            .collect();
+    }
+    let d = detected(v);
+    if d.is_empty() {
+        vec![]
+    } else {
+        vec![d]
+    }
 }
 
 /// The most likely language code of a verbose_json reply (whisper.cpp: language_probabilities).
@@ -175,5 +217,11 @@ mod tests {
         assert_eq!(detected(&json!({"language": "Swedish"})), "sv");
         assert_eq!(detected(&json!({})), "");
         assert_eq!(heard_from(&v, "sv").lang, "sv");
+        assert_eq!(heard_from(&v, "").langs, vec!["da", "sv"]);
+        let mixed = json!({"language_probabilities": {"zh": 0.69, "en": 0.30, "ja": 0.01}});
+        assert_eq!(heard_from(&mixed, "").langs, vec!["zh", "en"]);
+        let one = json!({"language_probabilities": {"sv": 0.88, "no": 0.05}});
+        assert_eq!(heard_from(&one, "").langs, vec!["sv"]);
+        assert_eq!(heard_from(&mixed, "sv").langs, vec!["sv", "zh"]);
     }
 }

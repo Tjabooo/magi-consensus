@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 (2026-11-16)
+
+- Mixed-language speech: a second language Whisper hears (from 15 %) goes to the planner too
+  ("spoken in Chinese and English"), so "你好吗, answer in English" answers in English.
+- Reply-language rules: "from now on answer my Chinese in English" / "以后用英语回答我" set a lasting
+  rule (zh → en, "*" = any language) that the code applies to every later request; "stop answering my
+  Chinese in English" clears it.
+- Standing notes: "remember that …" keeps a fact for good; the planner sees them in every prompt.
+  Notes and rules need a lasting word in the request (`planner.note_cues`), so a one-off "answer in
+  English" isn't kept. `consensus notes`, `consensus forget all`.
+
 ## 0.3.0 (2026-11-16)
 
 - General voice assistant: questions, small talk, statements and garbled speech get spoken answers;

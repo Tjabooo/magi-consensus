@@ -32,7 +32,8 @@ USAGE
   consensus check COMMAND...                    hard rules only, no models
   consensus hear FILE.wav                       transcribe only (tests the speech endpoint)
   consensus log [N]                             last N decisions (default 10)
-  consensus forget                              clear the conversation memory
+  consensus forget [all]                        clear the conversation memory (all: standing notes too)
+  consensus notes                               standing notes (from now on…, remember…)
   consensus config                              config path + effective settings
 
   --dry-run   vote but never run the command
@@ -277,12 +278,32 @@ fn decide(cfg: &Config, request: &str, o: &Opts) -> i32 {
     };
     record["action"] = json!(action);
     println!("request : {request}");
+    let noted = if o.dry_run {
+        vec![]
+    } else {
+        let mut n = memory::update_notes(cfg, request, &action.remember, &action.forget);
+        n.extend(memory::update_language_rule(
+            cfg,
+            request,
+            o.lang.split(',').next().unwrap_or(""),
+            &action.rule_heard,
+            &action.rule_reply,
+        ));
+        n
+    };
+    for n in &noted {
+        println!("notes   : {n}");
+    }
+    if o.dry_run && !(action.remember.is_empty() && action.forget.is_empty()) {
+        println!("notes   : would remember {:?} / forget {:?}", action.remember, action.forget);
+    }
 
     if action.kind != "shell" {
         println!("{:<8}: {}", action.kind, action.reply);
         let mut c = Card::new(if action.kind == "answer" { "answer" } else { "no action" });
         c.lines.push(f.color("dim", &format!("“{request}”")));
         c.lines.push(f.plain(&action.reply));
+        c.lines.extend(noted.iter().map(|n| f.color("accent", n)));
         out::card(cfg, &c);
         record["result"] = json!(action.kind);
         record["ms"] = json!(t0.elapsed().as_millis());
@@ -445,7 +466,7 @@ fn cmd_ptt(cfg: &Config, what: &str, o_pid: Option<&str>, o: &mut Opts) -> i32 {
         out::card(cfg, &c);
         match ptt::finish(cfg, pid) {
             Ok(Some(heard)) => {
-                let o = Opts { lang: heard.lang.clone(), ..o.clone() };
+                let o = Opts { lang: heard.langs.join(","), ..o.clone() };
                 handle(cfg, &heard.text, &o)
             }
             Ok(None) => {
@@ -573,6 +594,19 @@ fn main() {
         "forget" => {
             memory::clear();
             println!("conversation forgotten");
+            if rest.first().is_some_and(|a| a == "all" || a == "notes") {
+                memory::clear_notes();
+                println!("standing notes forgotten");
+            }
+            0
+        }
+        "notes" => {
+            for n in memory::notes() {
+                println!("- {n}");
+            }
+            for (heard, reply) in memory::language_rules() {
+                println!("- answer {} in {}", council::language_name(&heard), council::language_name(&reply));
+            }
             0
         }
         "ptt" => {
@@ -597,7 +631,7 @@ fn main() {
                 &cfg.voice.language_remap,
             ) {
                 Ok(t) => {
-                    println!("{} [{}]", t.text, if t.lang.is_empty() { "?" } else { &t.lang });
+                    println!("{} [{}]", t.text, if t.langs.is_empty() { "?".to_string() } else { t.langs.join(",") });
                     0
                 }
                 Err(e) => {

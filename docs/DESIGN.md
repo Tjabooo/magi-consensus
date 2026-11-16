@@ -143,3 +143,14 @@ conversation. Whisper runs with `verbose_json`; the most likely language code go
 misdetected language again as another. `reply_language` is checked against the text (CJK or not,
 Swedish letters/words) before it picks a `tts_voices` entry. Recent exchanges live in
 `conversation.jsonl` (state dir, last 50 lines) and go into the planner's user message.
+
+### Mixed languages, rules and notes (0.4.0)
+
+`Heard.langs` holds the top language plus a second one at 15 % or more (Whisper's
+`language_probabilities`); the planner sees "spoken in Chinese and English". Lasting preferences are
+stored by the code, not left to the model: `rule_heard`/`rule_reply` become `reply-languages.json`
+(heard → reply, `*` = any), applied in the request line ("reply in English (the user's standing
+rule)"); an empty `rule_heard` means the language the request was spoken in. `remember`/`forget`
+edit `notes.json` (max 30), which goes into every planner prompt. Both only change when the request has
+a word from `planner.note_cues`, so a one-off "answer in English" is not kept; clearing a rule needs
+none. Notes under three words are replaced by the request's own words.

@@ -117,6 +117,8 @@ pub struct Planner {
     pub memory_turns: usize,
     /// exchanges older than this are forgotten
     pub memory_minutes: u64,
+    /// words that make a request lasting; only then may the planner add a standing note
+    pub note_cues: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

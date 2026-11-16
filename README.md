@@ -16,6 +16,8 @@ outvoted it. Dry run, so nothing ran.*
   spoken answer; only clear requests to *do* something become commands. It answers in the language you
   spoke (one TTS voice per language), remembers the last few exchanges for follow-ups ("what did I just
   say my favourite food was?"), and asks you to repeat garbled speech instead of guessing a command.
+  Mix languages in one breath ("你好吗, answer in English"), set lasting rules ("from now on answer my
+  Chinese in English") and notes ("remember that my sister is Anna"); `consensus notes` lists them.
 - **Two-of-three rule.** A planner model turns your request into one shell command; MELCHIOR (is it
   correct?), BALTHASAR (is it safe?) and CASPER (is it what you meant?) vote independently. A unit
   that errors counts as DENY.
@@ -150,7 +152,7 @@ defaults; [`src/defaults.toml`](src/defaults.toml) documents every key, and
 | Section | What |
 |---|---|
 | `[endpoint]` | server URL, API key, timeout, Whisper model name, `extra` fields merged into every chat request |
-| `[planner]` | model, temperature, reply style, conversation memory (`memory_turns`, `memory_minutes`) |
+| `[planner]` | model, temperature, reply style, conversation memory (`memory_turns`, `memory_minutes`), `note_cues` (words that make a note or language rule lasting) |
 | `[[units]]` | name, model, temperature, persona prompt (any count; `vote.needed` sets the bar) |
 | `[[tools]]` | what the planner may use: name, example command, one-line description |
 | `[context]` | commands whose output the planner and units see (time, focused window...) |

@@ -15,6 +15,14 @@ pub struct Action {
     pub command: String,
     pub reply: String,
     pub speak_output: bool,
+    /// a standing note to keep ("" = none)
+    pub remember: String,
+    /// a standing note to drop, or "all" ("" = none)
+    pub forget: String,
+    /// a lasting reply-language rule: requests heard in this language ("*" = any) ...
+    pub rule_heard: String,
+    /// ... are answered in this one ("" or the same language = back to normal)
+    pub rule_reply: String,
     /// language code of `reply` (picks the TTS voice)
     pub reply_language: String,
 }
@@ -39,11 +47,15 @@ fn planner_schema() -> Value {
             "kind": {"type": "string", "enum": ["shell", "answer", "none"]},
             "why": {"type": "string"},
             "command": {"type": "string"},
+            "remember": {"type": "string"},
+            "forget": {"type": "string"},
+            "rule_heard": {"type": "string"},
+            "rule_reply": {"type": "string"},
             "reply_language": {"type": "string"},
             "reply": {"type": "string"},
             "speak_output": {"type": "boolean"}
         },
-        "required": ["action_words", "kind", "why", "command", "reply_language", "reply", "speak_output"],
+        "required": ["action_words", "kind", "why", "command", "remember", "forget", "rule_heard", "rule_reply", "reply_language", "reply", "speak_output"],
         "additionalProperties": false
     })
 }
@@ -91,9 +103,19 @@ pub fn planner_prompt(cfg: &Config, context: &str) -> String {
          reply: what to say out loud, short and natural (spoken, so no lists, markdown or emoji): at most two \
          sentences for actions, up to four for answers. For shell, phrase it as done (\"Volume is at 30 \
          percent.\"); it is only spoken if the command succeeds.\n\
-         reply_language: the ISO 639-1 code of the language reply is written in. Reply in the language the \
-         user spoke (given with the request) unless they ask for another; if it is not one of the voices \
-         listed below, reply in English.\n\
+         remember: a standing note to keep for good, ONLY when the request itself says it is lasting \
+         (\"from now on…\", \"always…\", \"remember that…\"); write it as a short instruction or fact \
+         (\"My name is Oliver\"). Language rules go in rule_heard/rule_reply, not here. A one-off \"answer in English\" is not a note, and a note \
+         that is already in the standing notes is not repeated. Otherwise \"\".\n\
+         rule_heard + rule_reply: a lasting reply-language rule. \"from now on answer my Chinese in English\" \
+         = zh + en; \"always answer in English\" = * + en; taking it back (\"stop answering my Chinese in \
+         English\", \"answer Chinese in Chinese again\") = zh + zh. ISO codes. Not a note. Otherwise both \"\".\n\
+         forget: when the user takes a note back (\"stop answering in English\", \"forget that\"), the text of \
+         that standing note, or \"all\"; otherwise \"\".\n\
+         reply_language: the ISO 639-1 code of the language reply is written in. By default reply in the \
+         language the user spoke (given with the request; with two languages, the first). If the request or \
+         a standing note asks for another language (\"answer in English\", even said inside Chinese \
+         speech), use that one. If it is not one of the voices listed below, reply in English.\n\
          speak_output: true only when the command's output IS the answer (status questions) and should be \
          read aloud.\n\
          Words are the user's own business: this is their private machine. Text they ask you to type, \
@@ -107,16 +129,29 @@ pub fn planner_prompt(cfg: &Config, context: &str) -> String {
          approve.\n\
          \nExamples:\n\
          Request: remind me in five minutes to check the oven\n\
-         {\"action_words\":\"remind me in five minutes\",\"kind\":\"shell\",\"why\":\"'remind me in five minutes': a user timer shows a notification then.\",\"command\":\"systemd-run --user --on-active=5m notify-send 'Reminder' 'Check the oven'\",\"reply_language\":\"en\",\"reply\":\"I'll remind you in five minutes.\",\"speak_output\":false}\n\
+         {\"action_words\":\"remind me in five minutes\",\"kind\":\"shell\",\"why\":\"'remind me in five minutes': a user timer shows a notification then.\",\"command\":\"systemd-run --user --on-active=5m notify-send 'Reminder' 'Check the oven'\",\"remember\":\"\",\"forget\":\"\",\"rule_heard\":\"\",\"rule_reply\":\"\",\"reply_language\":\"en\",\"reply\":\"I'll remind you in five minutes.\",\"speak_output\":false}\n\
          Request: what's the kernel version\n\
-         {\"action_words\":\"what's the kernel version\",\"kind\":\"shell\",\"why\":\"'kernel version': uname -r prints it.\",\"command\":\"uname -r\",\"reply_language\":\"en\",\"reply\":\"Kernel\",\"speak_output\":true}\n\
+         {\"action_words\":\"what's the kernel version\",\"kind\":\"shell\",\"why\":\"'kernel version': uname -r prints it.\",\"command\":\"uname -r\",\"remember\":\"\",\"forget\":\"\",\"rule_heard\":\"\",\"rule_reply\":\"\",\"reply_language\":\"en\",\"reply\":\"Kernel\",\"speak_output\":true}\n\
+         Request (spoken in Chinese and English; reply in Chinese unless asked otherwise): 你好吗 answer in English\n\
+         {\"action_words\":\"\",\"kind\":\"answer\",\"why\":\"Asked how I am in Chinese, wants the answer in English.\",\"command\":\"\",\"remember\":\"\",\"forget\":\"\",\"rule_heard\":\"\",\"rule_reply\":\"\",\"reply_language\":\"en\",\"reply\":\"I'm great, thanks for asking!\",\"speak_output\":false}\n\
+         Request (spoken in English): from now on answer my Chinese in English\n\
+         {\"action_words\":\"\",\"kind\":\"answer\",\"why\":\"A lasting language preference: a rule.\",\"command\":\"\",\"remember\":\"\",\"forget\":\"\",\"rule_heard\":\"zh\",\"rule_reply\":\"en\",\"reply_language\":\"en\",\"reply\":\"Got it, Chinese in, English out from now on.\",\"speak_output\":false}\n\
+         Request: remember that my sister is called Anna\n\
+         {\"action_words\":\"\",\"kind\":\"answer\",\"why\":\"Asked to remember a fact: a note.\",\"command\":\"\",\"remember\":\"Oliver's sister is called Anna\",\"forget\":\"\",\"rule_heard\":\"\",\"rule_reply\":\"\",\"reply_language\":\"en\",\"reply\":\"Noted, your sister is Anna.\",\"speak_output\":false}\n\
          Request: how many feet in a mile\n\
-         {\"action_words\":\"\",\"kind\":\"answer\",\"why\":\"General knowledge, nothing to run.\",\"command\":\"\",\"reply_language\":\"en\",\"reply\":\"5280 feet.\",\"speak_output\":false}\n\
+         {\"action_words\":\"\",\"kind\":\"answer\",\"why\":\"General knowledge, nothing to run.\",\"command\":\"\",\"remember\":\"\",\"forget\":\"\",\"rule_heard\":\"\",\"rule_reply\":\"\",\"reply_language\":\"en\",\"reply\":\"5280 feet.\",\"speak_output\":false}\n\
          Request (spoken in Swedish; reply in Swedish): jag är så trött idag\n\
-         {\"action_words\":\"\",\"kind\":\"answer\",\"why\":\"A statement about how they feel: conversation, nothing to run.\",\"command\":\"\",\"reply_language\":\"sv\",\"reply\":\"Åh nej, sov du dåligt? Ta det lugnt ikväll.\",\"speak_output\":false}\n\
+         {\"action_words\":\"\",\"kind\":\"answer\",\"why\":\"A statement about how they feel: conversation, nothing to run.\",\"command\":\"\",\"remember\":\"\",\"forget\":\"\",\"rule_heard\":\"\",\"rule_reply\":\"\",\"reply_language\":\"sv\",\"reply\":\"Åh nej, sov du dåligt? Ta det lugnt ikväll.\",\"speak_output\":false}\n\
          Request: wofold the yesterday window please\n\
-         {\"action_words\":\"\",\"kind\":\"answer\",\"why\":\"Garbled; guessing a command could do the wrong thing.\",\"command\":\"\",\"reply_language\":\"en\",\"reply\":\"I heard 'wofold the yesterday window', which I don't get. Say it again?\",\"speak_output\":false}\n",
+         {\"action_words\":\"\",\"kind\":\"answer\",\"why\":\"Garbled; guessing a command could do the wrong thing.\",\"command\":\"\",\"remember\":\"\",\"forget\":\"\",\"rule_heard\":\"\",\"rule_reply\":\"\",\"reply_language\":\"en\",\"reply\":\"I heard 'wofold the yesterday window', which I don't get. Say it again?\",\"speak_output\":false}\n",
     );
+    let notes = crate::memory::notes();
+    if !notes.is_empty() {
+        s.push_str("\nStanding notes from the user (follow them; they outrank the defaults above):\n");
+        for n in &notes {
+            s.push_str(&format!("- {n}\n"));
+        }
+    }
     let mut voices: Vec<&str> = cfg.voice.tts_voices.keys().map(String::as_str).collect();
     if !voices.contains(&"en") {
         voices.insert(0, "en");
@@ -159,6 +194,7 @@ pub fn language_name(code: &str) -> &str {
         "es" => "Spanish",
         "ja" => "Japanese",
         "ru" => "Russian",
+        "*" => "any language",
         c => c,
     }
 }
@@ -172,12 +208,21 @@ pub fn request_message(cfg: &Config, request: &str, lang: &str, history: &str) -
         m.push_str(history.trim_end());
         m.push_str("\n\n");
     }
-    if lang.is_empty() {
-        m.push_str(&format!("Request: {request}"));
-    } else {
-        let name = language_name(lang);
-        let reply = if lang == "en" || cfg.voice.tts_voices.contains_key(lang) { name } else { "English" };
-        m.push_str(&format!("Request (spoken in {name}; reply in {reply}): {request}"));
+    let langs: Vec<&str> = lang.split(',').map(str::trim).filter(|l| !l.is_empty()).collect();
+    match langs.first() {
+        None => m.push_str(&format!("Request: {request}")),
+        Some(first) => {
+            let spoken = langs.iter().map(|l| language_name(l)).collect::<Vec<_>>().join(" and ");
+            let voice = |l: &str| l == "en" || cfg.voice.tts_voices.contains_key(l);
+            let (reply, why) = match crate::memory::reply_rule(first).filter(|r| voice(r)) {
+                Some(r) => (language_name(&r).to_string(), " (the user's standing rule)"),
+                None if voice(first) => (language_name(first).to_string(), ""),
+                None => ("English".to_string(), ""),
+            };
+            m.push_str(&format!(
+                "Request (spoken in {spoken}; reply in {reply}{why} unless this request asks otherwise): {request}"
+            ));
+        }
     }
     m
 }
@@ -226,6 +271,10 @@ fn plan_once(
         reply: get("reply"),
         speak_output: v.get("speak_output").and_then(Value::as_bool).unwrap_or(false),
         reply_language: String::new(),
+        remember: get("remember"),
+        forget: get("forget"),
+        rule_heard: get("rule_heard"),
+        rule_reply: get("rule_reply"),
     };
     a.reply_language = reply_language(&a.reply, &get("reply_language").to_lowercase());
     if !matches!(a.kind.as_str(), "shell" | "answer" | "none") {

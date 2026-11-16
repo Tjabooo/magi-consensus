@@ -533,7 +533,8 @@ fn understand(cfg: &Config, pcm: &[i16], handle: &dyn Fn(&str, &str)) {
         }
     };
     let text = heard.text;
-    eprintln!("ears: heard {:?} [{}] ({} ms)", text.trim(), heard.lang, t0.elapsed().as_millis());
+    let langs = heard.langs.join(",");
+    eprintln!("ears: heard {:?} [{langs}] ({} ms)", text.trim(), t0.elapsed().as_millis());
     let request = if cfg.ears.require_wake_word {
         match after_wake(cfg, &text) {
             Some(r) => r,
@@ -550,7 +551,7 @@ fn understand(cfg: &Config, pcm: &[i16], handle: &dyn Fn(&str, &str)) {
         out::close_card(cfg);
         return;
     }
-    handle(&request, &heard.lang);
+    handle(&request, &langs);
 }
 
 #[cfg(test)]

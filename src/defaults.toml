@@ -23,6 +23,10 @@ max_tokens = 400
 style = ""                      # tone/personality for replies, appended to the planner prompt
 memory_turns = 8                # recent exchanges the planner sees, so follow-ups work (0 = none)
 memory_minutes = 15             # older exchanges are forgotten
+# standing notes ("from now on answer in English") are only kept when the request has one of these
+note_cues = ["from now on", "always", "remember", "every time", "whenever", "permanently", "by default", "never",
+  "från och med nu", "från nu", "alltid", "kom ihåg", "varje gång", "aldrig",
+  "以后", "从现在", "总是", "一直", "记住", "永远", "每次"]
 
 [vote]
 needed = 2                      # approvals required (of the units below)
