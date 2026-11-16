@@ -17,6 +17,15 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-sherpa  # one cold build so both caches start in step
+      # sherpa-onnx-sys downloads its static libs into target/sherpa-onnx-prebuilt; rust-cache prunes that
+      # folder but keeps the build script's output, so the link fails on a warm cache without this
+      - uses: actions/cache@v4
+        with:
+          path: target/sherpa-onnx-prebuilt
+          key: sherpa-onnx-prebuilt-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: sherpa-onnx-prebuilt-${{ runner.os }}-
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
